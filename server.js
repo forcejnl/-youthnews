@@ -171,7 +171,7 @@ app.put("/api/settings",requireAuth,(req,res)=>{
 });
 
 app.get("/admin",(req,res)=>res.sendFile(path.join(ROOT,"public","admin.html")));
-app.get("*",(req,res)=>{
+app.get("/*splat",(req,res)=>{
   if(req.path.startsWith("/api/")) return res.status(404).end();
   res.sendFile(path.join(ROOT,"public","index.html"));
 });
