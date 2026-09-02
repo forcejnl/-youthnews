@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+<defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="#0b1f3a"/><stop offset="1" stop-color="#16a085"/></linearGradient></defs>
+<rect width="1200" height="700" fill="url(#g)"/><circle cx="980" cy="120" r="220" fill="#ffffff" opacity=".08"/><circle cx="120" cy="600" r="300" fill="#ffffff" opacity=".06"/>
+<text x="70" y="330" fill="white" font-family="Arial,sans-serif" font-size="86" font-weight="700">YOUTHNEWS</text>
+<text x="75" y="395" fill="white" opacity=".75" font-family="Arial,sans-serif" font-size="30">ข่าวสารคนรุ่นใหม่ รู้ไว เข้าใจง่าย</text></svg>

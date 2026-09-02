@@ -1,0 +1,13 @@
+<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ข่าว | YouthNews</title><link rel="stylesheet" href="/style.css"></head>
+<body><div class="topline">YouthNews</div><header class="header"><div class="wrap nav"><a class="brand" href="/"><span>YOUTH</span>NEWS</a><a href="/">หน้าแรก</a></div></header>
+<main class="wrap articlePage"><div id="article"></div></main><footer><div class="wrap">© YouthNews</div></footer>
+<script>
+const slug=new URLSearchParams(location.search).get('slug');
+fetch('/api/articles/'+encodeURIComponent(slug)).then(r=>r.json()).then(a=>{
+document.title=a.title+' | YouthNews';
+document.getElementById('article').innerHTML=`<div class="articleMeta">${a.category_name||'ข่าว'} · ${new Date(a.published_at).toLocaleDateString('th-TH',{year:'numeric',month:'long',day:'numeric'})} · ${a.views} views</div>
+<h1>${esc(a.title)}</h1><p class="lead">${esc(a.excerpt||'')}</p><img class="articleImg" src="${a.image||'/uploads/placeholder.svg'}"><div class="articleBody">${format(a.content||'')}</div><p class="author">โดย ${esc(a.author||'YouthNews')}</p>`;
+}).catch(()=>document.getElementById('article').innerHTML='<h1>ไม่พบข่าว</h1>');
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function format(s){return esc(s).split(/\\n\\s*\\n/).map(x=>'<p>'+x.replace(/\\n/g,'<br>')+'</p>').join('')}
+</script></body></html>
