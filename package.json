@@ -1,15 +1,15 @@
 {
-  "name": "youthnews-cms",
-  "version": "2.0.0",
+  "name": "youthnews-web",
+  "version": "1.0.0",
   "private": true,
-  "description": "YouthNews - editable English campus news CMS",
+  "description": "YouthNews - full-stack news website with editable admin dashboard",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": "24.x"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
