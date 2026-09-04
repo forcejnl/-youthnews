@@ -15,6 +15,8 @@ const ROOT = __dirname;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_ANON_KEY =
+  process.env.SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("Supabase environment variables are missing.");
@@ -267,6 +269,197 @@ async function seedNavigation() {
     );
   }
 }
+
+/* ==========================================
+   USER AUTH - SUPABASE
+========================================== */
+
+// USER LOGIN
+app.post("/api/user/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "Email and password are required."
+      });
+    }
+
+    const response = await fetch(
+      `${SUPABASE_URL}/auth/v1/token?grant_type=password`,
+      {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          email,
+          password
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(401).json({
+        error:
+          data.error_description ||
+          data.msg ||
+          "Invalid email or password."
+      });
+    }
+
+    res.json({
+      ok: true,
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_in: data.expires_in,
+      user: data.user
+    });
+
+  } catch (e) {
+    console.error("User login error:", e);
+
+    res.status(500).json({
+      error: "User login failed."
+    });
+  }
+});
+
+
+// USER SIGN UP
+app.post("/api/user/signup", async (req, res) => {
+  try {
+    const {
+      email,
+      password,
+      name
+    } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "Email and password are required."
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        error:
+          "Password must be at least 6 characters."
+      });
+    }
+
+    const response = await fetch(
+      `${SUPABASE_URL}/auth/v1/signup`,
+      {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          data: {
+            name: name || ""
+          }
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.status(400).json({
+        error:
+          data.msg ||
+          data.error_description ||
+          "Sign up failed."
+      });
+    }
+
+    res.json({
+      ok: true,
+      user: data.user || null,
+      access_token:
+        data.access_token || null,
+      refresh_token:
+        data.refresh_token || null
+    });
+
+  } catch (e) {
+    console.error("User signup error:", e);
+
+    res.status(500).json({
+      error: "User signup failed."
+    });
+  }
+});
+
+
+// CHECK CURRENT USER
+app.get("/api/user/me", async (req, res) => {
+  try {
+    const authHeader =
+      req.headers.authorization;
+
+    if (
+      !authHeader ||
+      !authHeader.startsWith("Bearer ")
+    ) {
+      return res.json(null);
+    }
+
+    const token =
+      authHeader.substring(7);
+
+    const response = await fetch(
+      `${SUPABASE_URL}/auth/v1/user`,
+      {
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization:
+            `Bearer ${token}`
+        }
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return res.json(null);
+    }
+
+    res.json({
+      id: data.id,
+      email: data.email,
+      user_metadata:
+        data.user_metadata || {},
+      created_at:
+        data.created_at
+    });
+
+  } catch (e) {
+    console.error(
+      "User session error:",
+      e
+    );
+
+    res.status(500).json({
+      error: "Failed to check user session."
+    });
+  }
+});
+
+
+// USER LOGOUT
+app.post("/api/user/logout", (req, res) => {
+  res.json({
+    ok: true
+  });
+});
 
 /* ==========================================
    ADMIN
