@@ -12,14 +12,30 @@
     <div class="sideBottom"><b>Stay in the loop</b><p>Fresh stories from the campus community every day.</p></div>
   </aside>
 
-  <div class="mainArea">
-    <header class="topbar">
-      <button class="mobileMenu" onclick="document.body.classList.toggle('menuOpen')">☰</button>
-      <div class="search"><span>⌕</span><input id="searchInput" placeholder="Search news, people, or topics..." onkeydown="if(event.key==='Enter')doSearch()"><button onclick="doSearch()">Search</button></div>
-      <div class="topIcons" id="userArea">
-  <button class="userBtn" onclick="openAuth()">Log in</button>
-</div>
+<div class="mainArea">
+  <header class="topbar">
 
+    <button class="mobileMenu" onclick="document.body.classList.toggle('menuOpen')">
+      ☰
+    </button>
+
+    <div class="search">
+      <span>⌕</span>
+      <input
+        id="searchInput"
+        placeholder="Search news, people, or topics..."
+        onkeydown="if(event.key==='Enter')doSearch()"
+      >
+      <button onclick="doSearch()">Search</button>
+    </div>
+
+    <div class="topIcons" id="userArea">
+      <button type="button" onclick="openAuth('login')">
+        Log in
+      </button>
+    </div>
+
+  </header>
     <main class="content">
       <section class="topGrid">
         <div id="hero"></div>
