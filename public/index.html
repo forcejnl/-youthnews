@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YouthNews</title><link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <a class="logo" href="/"><strong>YOUTH<br><span>NEWS</span></strong><small>CAMPUS<br>DAILY</small></a>
+    <nav id="sideNav"></nav>
+    <div class="sideBottom"><b>Stay in the loop</b><p>Fresh stories from the campus community every day.</p></div>
+  </aside>
+
+  <div class="mainArea">
+    <header class="topbar">
+      <button class="mobileMenu" onclick="document.body.classList.toggle('menuOpen')">☰</button>
+      <div class="search"><span>⌕</span><input id="searchInput" placeholder="Search news, people, or topics..." onkeydown="if(event.key==='Enter')doSearch()"><button onclick="doSearch()">Search</button></div>
+      <div class="topIcons"><span>♧</span><span>□</span><span class="avatar"></span></div>
+    </header>
+
+    <main class="content">
+      <section class="topGrid">
+        <div id="hero"></div>
+        <aside class="rightRail">
+          <section class="railCard"><h2>↗ Trending Now</h2><div id="trending" class="pills"></div></section>
+          <section class="railCard"><h2>News Categories</h2><ul id="categories"></ul></section>
+          <section class="railCard"><h2>Upcoming Events</h2><div id="events"></div></section>
+        </aside>
+      </section>
+
+      <section class="quick">
+        <div class="sectionTitle"><h2>⚡ QUICK NEWS</h2><a href="/?all=1">Latest updates</a></div>
+        <div id="quickGrid" class="quickGrid"></div>
+      </section>
+
+      <div id="filterPills" class="filterPills"></div>
+      <div id="sections"></div>
+
+      <section class="trendingBottom">
+        <h2>🔥 TRENDING TOPICS</h2><div id="trendingBottom" class="pills"></div>
+      </section>
+    </main>
+
+    <footer id="footer"></footer>
+  </div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
