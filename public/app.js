@@ -239,20 +239,13 @@ async function userLogout() {
 /* ==========================================
    AUTH STATE LISTENER
 ========================================== */
+
 supabaseClient.auth.onAuthStateChange(
   (event, session) => {
-    console.log(
-      "Auth event:",
-      event,
-      session
-    );
-    /*
-      Supabase sends INITIAL_SESSION
-      when the page loads.
-      After Google OAuth redirect,
-      Supabase can restore the session
-      and send SIGNED_IN.
-    */
+
+    console.log("Auth event:", event);
+    console.log("Session:", session);
+
     if (
       event === "INITIAL_SESSION" ||
       event === "SIGNED_IN" ||
@@ -260,16 +253,50 @@ supabaseClient.auth.onAuthStateChange(
       event === "USER_UPDATED" ||
       event === "TOKEN_REFRESHED"
     ) {
-      /*
-        Delay slightly so the Auth client
-        can finish updating its session.
-      */
       setTimeout(() => {
         updateUserUI();
-      }, 0);
+      }, 100);
     }
   }
 );
+
+
+/* ==========================================
+   CHECK USER SESSION
+========================================== */
+
+async function checkUserSession() {
+  try {
+
+    const {
+      data: { session },
+      error
+    } = await supabaseClient.auth.getSession();
+
+    if (error) {
+      console.error(
+        "Session error:",
+        error
+      );
+      return;
+    }
+
+    console.log(
+      "Current session:",
+      session
+    );
+
+    await updateUserUI();
+
+  } catch (e) {
+
+    console.error(
+      "Check session error:",
+      e
+    );
+
+  }
+}
 /* ==========================================
    GENERAL HELPERS
 ========================================== */
@@ -672,16 +699,15 @@ function doSearch() {
 /* ==========================================
    START
 ========================================== */
-init()
-  .then(() => {
-    /*
-      Update user UI after the
-      website has loaded.
-    */
-    updateUserUI();
-  })
+
+Promise.all([
+  init(),
+  checkUserSession()
+])
   .catch(e => {
+
     console.error(e);
+
     document.getElementById(
       "hero"
     ).innerHTML = `
@@ -690,6 +716,7 @@ init()
           <h1>
             Unable to load YouthNews
           </h1>
+
           <p>
             Check that the server is running
             and the API is available.
@@ -697,4 +724,5 @@ init()
         </div>
       </div>
     `;
+
   });
