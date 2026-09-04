@@ -29,6 +29,12 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+const SUPABASE_URL =
+  process.env.SUPABASE_URL;
+
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY;
+
 const query = (text, params = []) =>
   pool.query(text, params);
 
@@ -821,15 +827,17 @@ app.get(
    IMAGE UPLOAD - SUPABASE STORAGE
 ========================================== */
 
+const storage = multer.memoryStorage();
+
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage,
   limits: {
     fileSize: 8 * 1024 * 1024
   },
   fileFilter: (_, file, cb) => {
     cb(
       null,
-      /^image\/(jpeg|png|webp|gif)$/.test(
+      /^image\/(jpeg|png|webp|gif|svg\+xml)$/.test(
         file.mimetype
       )
     );
@@ -848,43 +856,50 @@ app.post(
         });
       }
 
-      const ext =
-        path.extname(req.file.originalname)
-          .toLowerCase() || ".jpg";
+      if (
+        !SUPABASE_URL ||
+        !SUPABASE_SERVICE_ROLE_KEY
+      ) {
+        return res.status(500).json({
+          error:
+            "Supabase Storage environment variables are missing."
+        });
+      }
 
       const filename =
         Date.now() +
         "-" +
-        crypto.randomBytes(6).toString("hex") +
-        ext;
-
-      const storagePath =
-        `articles/${filename}`;
+        crypto.randomBytes(4).toString("hex") +
+        path.extname(req.file.originalname).toLowerCase();
 
       const uploadUrl =
-        `${SUPABASE_URL}/storage/v1/object/news-images/${storagePath}`;
+        `${SUPABASE_URL}/storage/v1/object/news-images/${filename}`;
 
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers: {
-          Authorization:
-            `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          apikey:
-            SUPABASE_SERVICE_ROLE_KEY,
-          "Content-Type":
-            req.file.mimetype,
-          "x-upsert":
-            "false"
-        },
-        body: req.file.buffer
-      });
+      const uploadResponse = await fetch(
+        uploadUrl,
+        {
+          method: "POST",
+          headers: {
+            Authorization:
+              `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            apikey:
+              SUPABASE_SERVICE_ROLE_KEY,
+            "Content-Type":
+              req.file.mimetype,
+            "Cache-Control":
+              "3600"
+          },
+          body: req.file.buffer
+        }
+      );
 
-      const result = await response.text();
+      if (!uploadResponse.ok) {
+        const errorText =
+          await uploadResponse.text();
 
-      if (!response.ok) {
         console.error(
-          "Supabase Storage upload failed:",
-          result
+          "Supabase upload failed:",
+          errorText
         );
 
         return res.status(500).json({
@@ -894,7 +909,7 @@ app.post(
       }
 
       const publicUrl =
-        `${SUPABASE_URL}/storage/v1/object/public/news-images/${storagePath}`;
+        `${SUPABASE_URL}/storage/v1/object/public/news-images/${filename}`;
 
       res.json({
         url: publicUrl
@@ -910,14 +925,6 @@ app.post(
         error: "Image upload failed."
       });
     }
-  }
-);
-
-    res.json({
-      url:
-        "/uploads/" +
-        req.file.filename
-    });
   }
 );
 
