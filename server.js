@@ -12,12 +12,15 @@ const app = express();
 app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
-const UPLOADS = path.join(ROOT, "public", "uploads");
 
-fs.mkdirSync(UPLOADS, { recursive: true });
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!process.env.DATABASE_URL) {
-  console.error("DATABASE_URL is missing.");
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error(
+    "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing."
+  );
   process.exit(1);
 }
 
@@ -815,32 +818,18 @@ app.get(
 );
 
 /* ==========================================
-   IMAGE UPLOAD
+   IMAGE UPLOAD - SUPABASE STORAGE
 ========================================== */
 
-const storage = multer.diskStorage({
-  destination: (_, __, cb) =>
-    cb(null, UPLOADS),
-
-  filename: (_, file, cb) =>
-    cb(
-      null,
-      Date.now() +
-        "-" +
-        crypto.randomBytes(4).toString("hex") +
-        path.extname(file.originalname).toLowerCase()
-    )
-});
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 8 * 1024 * 1024
   },
   fileFilter: (_, file, cb) => {
     cb(
       null,
-      /^image\/(jpeg|png|webp|gif|svg\+xml)$/.test(
+      /^image\/(jpeg|png|webp|gif)$/.test(
         file.mimetype
       )
     );
@@ -851,12 +840,78 @@ app.post(
   "/api/upload",
   requireAuth,
   upload.single("image"),
-  (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({
-        error: "Please select an image."
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          error: "Please select an image."
+        });
+      }
+
+      const ext =
+        path.extname(req.file.originalname)
+          .toLowerCase() || ".jpg";
+
+      const filename =
+        Date.now() +
+        "-" +
+        crypto.randomBytes(6).toString("hex") +
+        ext;
+
+      const storagePath =
+        `articles/${filename}`;
+
+      const uploadUrl =
+        `${SUPABASE_URL}/storage/v1/object/news-images/${storagePath}`;
+
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          Authorization:
+            `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          apikey:
+            SUPABASE_SERVICE_ROLE_KEY,
+          "Content-Type":
+            req.file.mimetype,
+          "x-upsert":
+            "false"
+        },
+        body: req.file.buffer
+      });
+
+      const result = await response.text();
+
+      if (!response.ok) {
+        console.error(
+          "Supabase Storage upload failed:",
+          result
+        );
+
+        return res.status(500).json({
+          error:
+            "Failed to upload image to Supabase."
+        });
+      }
+
+      const publicUrl =
+        `${SUPABASE_URL}/storage/v1/object/public/news-images/${storagePath}`;
+
+      res.json({
+        url: publicUrl
+      });
+
+    } catch (e) {
+      console.error(
+        "Image upload error:",
+        e
+      );
+
+      res.status(500).json({
+        error: "Image upload failed."
       });
     }
+  }
+);
 
     res.json({
       url:
