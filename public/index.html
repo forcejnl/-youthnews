@@ -16,8 +16,9 @@
     <header class="topbar">
       <button class="mobileMenu" onclick="document.body.classList.toggle('menuOpen')">☰</button>
       <div class="search"><span>⌕</span><input id="searchInput" placeholder="Search news, people, or topics..." onkeydown="if(event.key==='Enter')doSearch()"><button onclick="doSearch()">Search</button></div>
-      <div class="topIcons"><span>♧</span><span>□</span><span class="avatar"></span></div>
-    </header>
+      <div class="topIcons" id="userArea">
+  <button class="userBtn" onclick="openAuth()">Log in</button>
+</div>
 
     <main class="content">
       <section class="topGrid">
@@ -45,7 +46,50 @@
     <footer id="footer"></footer>
   </div>
 </div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<div id="authModal" class="authModal hidden">
+  <div class="authBox">
+
+    <button class="authClose" onclick="closeAuth()">×</button>
+
+    <h2 id="authTitle">Welcome to YouthNews</h2>
+    <p id="authSubtitle">Log in to your account</p>
+
+    <input
+      id="authEmail"
+      type="email"
+      placeholder="Email"
+      autocomplete="email"
+    >
+
+    <input
+      id="authPassword"
+      type="password"
+      placeholder="Password"
+      autocomplete="current-password"
+    >
+
+    <button class="authSubmit" onclick="submitAuth()">
+      Log in
+    </button>
+
+    <button class="googleBtn" onclick="googleLogin()">
+      Continue with Google
+    </button>
+
+    <p id="authError" class="authError"></p>
+
+    <p class="authSwitch">
+      <span id="authSwitchText">Don't have an account?</span>
+      <button onclick="toggleAuthMode()" id="authSwitchBtn">
+        Sign up
+      </button>
+    </p>
+
+  </div>
+</div>
 <script src="/app.js"></script>
 </body>
 </html>
