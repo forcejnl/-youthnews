@@ -106,6 +106,22 @@
 
   </div>
 </div>
-<script src="/app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+const SUPABASE_URL =
+  "https://wtbdzydyxwqjcizudewc.supabase.co";
+
+const SUPABASE_ANON_KEY =
+  "sb_publishable_XWfnXO78YNB-H_S1CjBL5g_Tnvf9dv7";
+
+const supabaseClient =
+  supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY
+  );
+</script>
+
+  <script src="/app.js"></script>
 </body>
 </html>
