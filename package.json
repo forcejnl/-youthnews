@@ -1,21 +1,19 @@
 {
   "name": "youthnews-web",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "YouthNews - full-stack news website with editable admin dashboard",
+  "description": "YouthNews - full-stack news website with Supabase PostgreSQL CMS",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"
   },
-  "engines": {
-    "node": "24.x"
-  },
   "dependencies": {
-    "better-sqlite3": "^11.8.1",
+    "connect-pg-simple": "^10.0.0",
     "express": "^5.1.0",
     "express-session": "^1.18.2",
     "helmet": "^8.1.0",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "pg": "^8.16.3"
   }
 }
