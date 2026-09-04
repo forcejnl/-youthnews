@@ -1,10 +1,202 @@
-const SUPABASE_URL = "https://wtbdzydyxwqjcizudewc.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_XWfnXO78YNB-H_S1CjBL5g_Tnvf9dv7";
+const SUPABASE_URL =
+  "https://wtbdzydyxwqjcizudewc.supabase.co";
 
-const supabaseClient = supabase.createClient(
-  SUPABASE_URL,
-  SUPABASE_ANON_KEY
-);
+const SUPABASE_ANON_KEY =
+  "sb_publishable_XWfnXO78YNB-H_S1CjBL5g_Tnvf9dv7";
+
+const supabaseClient =
+  supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY
+  );
+
+/* ==========================================
+   USER AUTH
+========================================== */
+
+let authMode = "login";
+
+function openAuth(mode = "login") {
+  authMode = mode;
+
+  const modal = document.getElementById("authModal");
+  const title = document.getElementById("authTitle");
+  const subtitle = document.getElementById("authSubtitle");
+  const submit = document.querySelector(".authSubmit");
+  const switchText = document.getElementById("authSwitchText");
+  const switchBtn = document.getElementById("authSwitchBtn");
+  const error = document.getElementById("authError");
+
+  if (!modal) {
+    console.error("authModal not found");
+    return;
+  }
+
+  error.textContent = "";
+
+  if (authMode === "login") {
+    title.textContent = "Welcome to YouthNews";
+    subtitle.textContent = "Log in to your account";
+    submit.textContent = "Log in";
+    switchText.textContent = "Don't have an account?";
+    switchBtn.textContent = "Sign up";
+  } else {
+    title.textContent = "Join YouthNews";
+    subtitle.textContent = "Create your account";
+    submit.textContent = "Sign up";
+    switchText.textContent = "Already have an account?";
+    switchBtn.textContent = "Log in";
+  }
+
+  modal.classList.remove("hidden");
+}
+
+function closeAuth() {
+  const modal = document.getElementById("authModal");
+
+  if (modal) {
+    modal.classList.add("hidden");
+  }
+
+  const error = document.getElementById("authError");
+
+  if (error) {
+    error.textContent = "";
+  }
+}
+
+function toggleAuthMode() {
+  openAuth(authMode === "login" ? "signup" : "login");
+}
+
+async function submitAuth() {
+  const email =
+    document.getElementById("authEmail").value.trim();
+
+  const password =
+    document.getElementById("authPassword").value;
+
+  const error =
+    document.getElementById("authError");
+
+  error.textContent = "";
+
+  if (!email || !password) {
+    error.textContent =
+      "Please enter your email and password.";
+    return;
+  }
+
+  try {
+    if (authMode === "login") {
+
+      const { error: authError } =
+        await supabaseClient.auth.signInWithPassword({
+          email,
+          password
+        });
+
+      if (authError) {
+        throw authError;
+      }
+
+      closeAuth();
+
+    } else {
+
+      const { data, error: authError } =
+        await supabaseClient.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: window.location.origin
+          }
+        });
+
+      if (authError) {
+        throw authError;
+      }
+
+      if (!data.session) {
+        error.textContent =
+          "Account created. Please check your email to confirm your account.";
+      } else {
+        closeAuth();
+      }
+    }
+
+  } catch (e) {
+    console.error(e);
+    error.textContent =
+      e.message || "Authentication failed.";
+  }
+}
+
+async function googleLogin() {
+  const error =
+    document.getElementById("authError");
+
+  error.textContent = "";
+
+  try {
+    const { error: authError } =
+      await supabaseClient.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+
+    if (authError) {
+      throw authError;
+    }
+
+  } catch (e) {
+    console.error(e);
+    error.textContent =
+      e.message || "Google login failed.";
+  }
+}
+
+async function updateUserUI() {
+  const userArea =
+    document.getElementById("userArea");
+
+  if (!userArea) return;
+
+  const {
+    data: { user }
+  } = await supabaseClient.auth.getUser();
+
+  if (!user) {
+    userArea.innerHTML = `
+      <button type="button" onclick="openAuth('login')">
+        Log in
+      </button>
+    `;
+
+    return;
+  }
+
+  const email = user.email || "User";
+
+  userArea.innerHTML = `
+    <span class="userEmail">${esc(email)}</span>
+    <button type="button" onclick="userLogout()">
+      Sign out
+    </button>
+  `;
+}
+
+async function userLogout() {
+  await supabaseClient.auth.signOut();
+  updateUserUI();
+}
+
+supabaseClient.auth.onAuthStateChange(() => {
+  updateUserUI();
+});
+
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 async function api(u){const r=await fetch(u);if(!r.ok)throw new Error("API error");return r.json()}
