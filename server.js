@@ -9,7 +9,6 @@ const fs = require("fs");
 const crypto = require("crypto");
 
 const app = express();
-app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3000;
 const ROOT = __dirname;
 
@@ -18,9 +17,7 @@ const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error(
-    "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing."
-  );
+  console.error("Supabase environment variables are missing.");
   process.exit(1);
 }
 
@@ -28,12 +25,6 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
-
-const SUPABASE_URL =
-  process.env.SUPABASE_URL;
-
-const SUPABASE_SERVICE_ROLE_KEY =
-  process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const query = (text, params = []) =>
   pool.query(text, params);
@@ -827,17 +818,15 @@ app.get(
    IMAGE UPLOAD - SUPABASE STORAGE
 ========================================== */
 
-const storage = multer.memoryStorage();
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 8 * 1024 * 1024
   },
   fileFilter: (_, file, cb) => {
     cb(
       null,
-      /^image\/(jpeg|png|webp|gif|svg\+xml)$/.test(
+      /^image\/(jpeg|png|webp|gif)$/.test(
         file.mimetype
       )
     );
@@ -856,50 +845,41 @@ app.post(
         });
       }
 
-      if (
-        !SUPABASE_URL ||
-        !SUPABASE_SERVICE_ROLE_KEY
-      ) {
-        return res.status(500).json({
-          error:
-            "Supabase Storage environment variables are missing."
-        });
-      }
+      const ext =
+        path.extname(req.file.originalname)
+          .toLowerCase() || ".jpg";
 
       const filename =
         Date.now() +
         "-" +
-        crypto.randomBytes(4).toString("hex") +
-        path.extname(req.file.originalname).toLowerCase();
+        crypto.randomBytes(6).toString("hex") +
+        ext;
+
+      const storagePath = `articles/${filename}`;
 
       const uploadUrl =
-        `${SUPABASE_URL}/storage/v1/object/news-images/${filename}`;
+        `${SUPABASE_URL}/storage/v1/object/news-images/${storagePath}`;
 
-      const uploadResponse = await fetch(
-        uploadUrl,
-        {
-          method: "POST",
-          headers: {
-            Authorization:
-              `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-            apikey:
-              SUPABASE_SERVICE_ROLE_KEY,
-            "Content-Type":
-              req.file.mimetype,
-            "Cache-Control":
-              "3600"
-          },
-          body: req.file.buffer
-        }
-      );
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          Authorization:
+            `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          apikey:
+            SUPABASE_SERVICE_ROLE_KEY,
+          "Content-Type":
+            req.file.mimetype,
+          "x-upsert": "false"
+        },
+        body: req.file.buffer
+      });
 
-      if (!uploadResponse.ok) {
-        const errorText =
-          await uploadResponse.text();
+      const result = await response.text();
 
+      if (!response.ok) {
         console.error(
-          "Supabase upload failed:",
-          errorText
+          "Supabase Storage upload failed:",
+          result
         );
 
         return res.status(500).json({
@@ -909,7 +889,7 @@ app.post(
       }
 
       const publicUrl =
-        `${SUPABASE_URL}/storage/v1/object/public/news-images/${filename}`;
+        `${SUPABASE_URL}/storage/v1/object/public/news-images/${storagePath}`;
 
       res.json({
         url: publicUrl
@@ -927,7 +907,6 @@ app.post(
     }
   }
 );
-
 /* ==========================================
    HOMEPAGE SECTIONS
 ========================================== */
