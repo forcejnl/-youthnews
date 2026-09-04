@@ -1,15 +1,3 @@
-const SUPABASE_URL =
-  "https://wtbdzydyxwqjcizudewc.supabase.co";
-
-const SUPABASE_ANON_KEY =
-  "sb_publishable_XWfnXO78YNB-H_S1CjBL5g_Tnvf9dv7";
-
-const supabaseClient =
-  supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_ANON_KEY
-  );
-
 /* ==========================================
    USER AUTH
 ========================================== */
