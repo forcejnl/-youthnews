@@ -255,28 +255,19 @@ async function seedNavigation() {
     ["Student Voice", "/?category=student-voice", 6]
   ];
 
+  await query(`DELETE FROM navigation`);
+
   for (const [label, url, position] of items) {
     await query(
       `
-      INSERT INTO navigation(label,url,position)
-      VALUES($1,$2,$3)
-      ON CONFLICT DO NOTHING
-      `,
-      [label, url, position]
-    );
-
-    await query(
-      `
-      UPDATE navigation
-      SET url=$2,
-          position=$3,
-          enabled=TRUE
-      WHERE label=$1
+      INSERT INTO navigation(label,url,position,enabled)
+      VALUES($1,$2,$3,TRUE)
       `,
       [label, url, position]
     );
   }
 }
+
 /* ==========================================
    USER AUTH - SUPABASE
 ========================================== */
