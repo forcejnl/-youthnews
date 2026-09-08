@@ -5,7 +5,6 @@ const { Pool } = require("pg");
 const helmet = require("helmet");
 const multer = require("multer");
 const path = require("path");
-const fs = require("fs");
 const crypto = require("crypto");
 
 const app = express();
@@ -15,8 +14,6 @@ const ROOT = __dirname;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY;
-const SUPABASE_ANON_KEY =
-  process.env.SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("Supabase environment variables are missing.");
@@ -25,22 +22,29 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 const query = (text, params = []) =>
   pool.query(text, params);
 
-const hash = s =>
-  crypto.createHash("sha256").update(String(s)).digest("hex");
+const hash = (s) =>
+  crypto
+    .createHash("sha256")
+    .update(String(s))
+    .digest("hex");
 
 function slugify(s) {
-  return String(s)
-    .trim()
-    .toLowerCase()
-    .replace(/[^\u0E00-\u0E7Fa-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "") ||
-    crypto.randomBytes(5).toString("hex");
+  return (
+    String(s)
+      .trim()
+      .toLowerCase()
+      .replace(/[^\u0E00-\u0E7Fa-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") ||
+    crypto.randomBytes(5).toString("hex")
+  );
 }
 
 function articleRow(a) {
@@ -50,9 +54,16 @@ function articleRow(a) {
   };
 }
 
+/* ==========================================
+   ADMIN AUTH MIDDLEWARE
+========================================== */
+
 function requireAuth(req, res, next) {
-  if (req.session.user) return next();
-  res.status(401).json({
+  if (req.session && req.session.user) {
+    return next();
+  }
+
+  return res.status(401).json({
     error: "Please login first."
   });
 }
@@ -61,14 +72,29 @@ function requireAuth(req, res, next) {
    APP
 ========================================== */
 
+app.set("trust proxy", 1);
+
 app.use(
   helmet({
     contentSecurityPolicy: false
   })
 );
 
-app.use(express.json({ limit: "2mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(
+  express.json({
+    limit: "2mb"
+  })
+);
+
+app.use(
+  express.urlencoded({
+    extended: true
+  })
+);
+
+/* ==========================================
+   SESSION
+========================================== */
 
 app.use(
   session({
@@ -77,11 +103,17 @@ app.use(
       tableName: "user_sessions",
       createTableIfMissing: true
     }),
+
     secret:
       process.env.SESSION_SECRET ||
       "CHANGE_THIS_SESSION_SECRET",
+
     resave: false,
+
     saveUninitialized: false,
+
+    rolling: true,
+
     cookie: {
       httpOnly: true,
       sameSite: "lax",
@@ -91,7 +123,11 @@ app.use(
   })
 );
 
-app.use(express.static(path.join(ROOT, "public")));
+app.use(
+  express.static(
+    path.join(ROOT, "public")
+  )
+);
 
 /* ==========================================
    STARTUP
@@ -243,221 +279,71 @@ async function seedSettings() {
 
 /* ==========================================
    SEED NAVIGATION
+   IMPORTANT:
+   DO NOT DELETE ADMIN-MANAGED NAVIGATION
 ========================================== */
 
 async function seedNavigation() {
   const items = [
     ["Home", "/", 1],
-    ["RMUTK News", "/?category=rmutk-news", 2],
-    ["General", "/?category=general", 3],
-    ["Training News", "/?category=training-news", 4],
-    ["Career", "/?category=career", 5],
-    ["Student Voice", "/?category=student-voice", 6]
+    [
+      "RMUTK News",
+      "/?category=rmutk-news",
+      2
+    ],
+    [
+      "General",
+      "/?category=general",
+      3
+    ],
+    [
+      "Training News",
+      "/?category=training-news",
+      4
+    ],
+    [
+      "Career",
+      "/?category=career",
+      5
+    ],
+    [
+      "Student Voice",
+      "/?category=student-voice",
+      6
+    ]
   ];
 
-  await query(`DELETE FROM navigation`);
-
   for (const [label, url, position] of items) {
-    await query(
+    const existing = await query(
       `
-      INSERT INTO navigation(label,url,position,enabled)
-      VALUES($1,$2,$3,TRUE)
+      SELECT id
+      FROM navigation
+      WHERE label=$1
+      LIMIT 1
       `,
-      [label, url, position]
+      [label]
     );
+
+    if (existing.rowCount === 0) {
+      await query(
+        `
+        INSERT INTO navigation(
+          label,
+          url,
+          position,
+          enabled
+        )
+        VALUES($1,$2,$3,TRUE)
+        `,
+        [
+          label,
+          url,
+          position
+        ]
+      );
+    }
   }
 }
-
-/* ==========================================
-   USER AUTH - SUPABASE
-========================================== */
-
-// USER LOGIN
-app.post("/api/user/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({
-        error: "Email and password are required."
-      });
-    }
-
-    const response = await fetch(
-      `${SUPABASE_URL}/auth/v1/token?grant_type=password`,
-      {
-        method: "POST",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          email,
-          password
-        })
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return res.status(401).json({
-        error:
-          data.error_description ||
-          data.msg ||
-          "Invalid email or password."
-      });
-    }
-
-    res.json({
-      ok: true,
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-      expires_in: data.expires_in,
-      user: data.user
-    });
-
-  } catch (e) {
-    console.error("User login error:", e);
-
-    res.status(500).json({
-      error: "User login failed."
-    });
-  }
-});
-
-
-// USER SIGN UP
-app.post("/api/user/signup", async (req, res) => {
-  try {
-    const {
-      email,
-      password,
-      name
-    } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({
-        error: "Email and password are required."
-      });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({
-        error:
-          "Password must be at least 6 characters."
-      });
-    }
-
-    const response = await fetch(
-      `${SUPABASE_URL}/auth/v1/signup`,
-      {
-        method: "POST",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          email,
-          password,
-          data: {
-            name: name || ""
-          }
-        })
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return res.status(400).json({
-        error:
-          data.msg ||
-          data.error_description ||
-          "Sign up failed."
-      });
-    }
-
-    res.json({
-      ok: true,
-      user: data.user || null,
-      access_token:
-        data.access_token || null,
-      refresh_token:
-        data.refresh_token || null
-    });
-
-  } catch (e) {
-    console.error("User signup error:", e);
-
-    res.status(500).json({
-      error: "User signup failed."
-    });
-  }
-});
-
-
-// CHECK CURRENT USER
-app.get("/api/user/me", async (req, res) => {
-  try {
-    const authHeader =
-      req.headers.authorization;
-
-    if (
-      !authHeader ||
-      !authHeader.startsWith("Bearer ")
-    ) {
-      return res.json(null);
-    }
-
-    const token =
-      authHeader.substring(7);
-
-    const response = await fetch(
-      `${SUPABASE_URL}/auth/v1/user`,
-      {
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization:
-            `Bearer ${token}`
-        }
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return res.json(null);
-    }
-
-    res.json({
-      id: data.id,
-      email: data.email,
-      user_metadata:
-        data.user_metadata || {},
-      created_at:
-        data.created_at
-    });
-
-  } catch (e) {
-    console.error(
-      "User session error:",
-      e
-    );
-
-    res.status(500).json({
-      error: "Failed to check user session."
-    });
-  }
-});
-
-
-// USER LOGOUT
-app.post("/api/user/logout", (req, res) => {
-  res.json({
-    ok: true
-  });
-});
 
 /* ==========================================
    ADMIN
@@ -472,17 +358,28 @@ async function seedAdmin() {
     "change-me-now";
 
   const existing = await query(
-    `SELECT id FROM users WHERE username=$1`,
+    `
+    SELECT id
+    FROM users
+    WHERE username=$1
+    LIMIT 1
+    `,
     [username]
   );
 
   if (existing.rowCount === 0) {
     await query(
       `
-      INSERT INTO users(username,password_hash)
+      INSERT INTO users(
+        username,
+        password_hash
+      )
       VALUES($1,$2)
       `,
-      [username, hash(password)]
+      [
+        username,
+        hash(password)
+      ]
     );
 
     console.log(
@@ -495,33 +392,44 @@ async function seedAdmin() {
    SETTINGS
 ========================================== */
 
-app.get("/api/settings", async (req, res) => {
-  try {
-    const r = await query(
-      `SELECT key,value FROM settings`
-    );
+app.get(
+  "/api/settings",
+  async (req, res) => {
+    try {
+      const r = await query(
+        `
+        SELECT key,value
+        FROM settings
+        `
+      );
 
-    res.json(
-      Object.fromEntries(
-        r.rows.map(x => [x.key, x.value])
-      )
-    );
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({
-      error: "Failed to load settings"
-    });
+      res.json(
+        Object.fromEntries(
+          r.rows.map((x) => [
+            x.key,
+            x.value
+          ])
+        )
+      );
+    } catch (e) {
+      console.error(e);
+
+      res.status(500).json({
+        error: "Failed to load settings"
+      });
+    }
   }
-});
+);
 
 app.put(
   "/api/settings",
   requireAuth,
   async (req, res) => {
     try {
-      for (const [key, value] of Object.entries(
-        req.body
-      )) {
+      for (const [
+        key,
+        value
+      ] of Object.entries(req.body)) {
         await query(
           `
           INSERT INTO settings(key,value)
@@ -529,13 +437,19 @@ app.put(
           ON CONFLICT(key)
           DO UPDATE SET value=EXCLUDED.value
           `,
-          [key, String(value)]
+          [
+            key,
+            String(value)
+          ]
         );
       }
 
-      res.json({ ok: true });
+      res.json({
+        ok: true
+      });
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
         error: "Failed to save settings"
       });
@@ -547,31 +461,43 @@ app.put(
    CATEGORIES
 ========================================== */
 
-app.get("/api/categories", async (req, res) => {
-  try {
-    const r = await query(
-      `SELECT * FROM categories ORDER BY id`
-    );
+app.get(
+  "/api/categories",
+  async (req, res) => {
+    try {
+      const r = await query(
+        `
+        SELECT *
+        FROM categories
+        ORDER BY id
+        `
+      );
 
-    res.json(r.rows);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({
-      error: "Failed to load categories"
-    });
+      res.json(r.rows);
+    } catch (e) {
+      console.error(e);
+
+      res.status(500).json({
+        error: "Failed to load categories"
+      });
+    }
   }
-});
+);
 
 app.post(
   "/api/categories",
   requireAuth,
   async (req, res) => {
     try {
-      const { name, slug } = req.body;
+      const {
+        name,
+        slug
+      } = req.body;
 
       if (!name) {
         return res.status(400).json({
-          error: "Category name is required."
+          error:
+            "Category name is required."
         });
       }
 
@@ -580,18 +506,26 @@ app.post(
 
       const r = await query(
         `
-        INSERT INTO categories(name,slug)
+        INSERT INTO categories(
+          name,
+          slug
+        )
         VALUES($1,$2)
         RETURNING *
         `,
-        [name, finalSlug]
+        [
+          name,
+          finalSlug
+        ]
       );
 
       res.json(r.rows[0]);
     } catch (e) {
       console.error(e);
+
       res.status(400).json({
-        error: "Category already exists or is invalid."
+        error:
+          "Category already exists or is invalid."
       });
     }
   }
@@ -602,12 +536,17 @@ app.put(
   requireAuth,
   async (req, res) => {
     try {
-      const { name, slug } = req.body;
+      const {
+        name,
+        slug
+      } = req.body;
 
       await query(
         `
         UPDATE categories
-        SET name=$1,slug=$2
+        SET
+          name=$1,
+          slug=$2
         WHERE id=$3
         `,
         [
@@ -617,11 +556,15 @@ app.put(
         ]
       );
 
-      res.json({ ok: true });
+      res.json({
+        ok: true
+      });
     } catch (e) {
       console.error(e);
+
       res.status(400).json({
-        error: "Failed to update category"
+        error:
+          "Failed to update category"
       });
     }
   }
@@ -633,15 +576,22 @@ app.delete(
   async (req, res) => {
     try {
       await query(
-        `DELETE FROM categories WHERE id=$1`,
+        `
+        DELETE FROM categories
+        WHERE id=$1
+        `,
         [req.params.id]
       );
 
-      res.json({ ok: true });
+      res.json({
+        ok: true
+      });
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to delete category"
+        error:
+          "Failed to delete category"
       });
     }
   }
@@ -651,86 +601,168 @@ app.delete(
    ARTICLES
 ========================================== */
 
-app.get("/api/articles", async (req, res) => {
-  try {
-    const {
-      category,
-      search,
-      featured,
-      limit = 30,
-      page = 1
-    } = req.query;
+app.get(
+  "/api/articles",
+  async (req, res) => {
+    try {
+      const {
+        category,
+        search,
+        featured,
+        status,
+        limit = 30,
+        page = 1
+      } = req.query;
 
-    const conditions = [
-      `a.status='published'`
-    ];
+      const conditions = [];
+      const params = [];
 
-    const params = [];
+      /*
+       * PUBLIC:
+       * only published articles.
+       *
+       * ADMIN:
+       * status=all returns everything.
+       */
 
-    if (category) {
-      params.push(category);
-      conditions.push(
-        `c.slug=$${params.length}`
+      if (status === "all") {
+        if (!req.session || !req.session.user) {
+          return res.status(401).json({
+            error: "Please login first."
+          });
+        }
+      } else if (
+        status === "draft"
+      ) {
+        if (
+          !req.session ||
+          !req.session.user
+        ) {
+          return res.status(401).json({
+            error: "Please login first."
+          });
+        }
+
+        params.push("draft");
+
+        conditions.push(
+          `a.status=$${params.length}`
+        );
+      } else if (
+        status === "published"
+      ) {
+        params.push("published");
+
+        conditions.push(
+          `a.status=$${params.length}`
+        );
+      } else {
+        conditions.push(
+          `a.status='published'`
+        );
+      }
+
+      if (category) {
+        params.push(category);
+
+        conditions.push(
+          `c.slug=$${params.length}`
+        );
+      }
+
+      if (featured === "1") {
+        conditions.push(
+          `a.featured=TRUE`
+        );
+      }
+
+      if (search) {
+        params.push(
+          `%${search}%`
+        );
+
+        const p =
+          `$${params.length}`;
+
+        conditions.push(
+          `(a.title ILIKE ${p}
+            OR a.excerpt ILIKE ${p}
+            OR a.content ILIKE ${p})`
+        );
+      }
+
+      const lim = Math.min(
+        Number(limit) || 30,
+        100
       );
-    }
 
-    if (featured === "1") {
-      conditions.push(`a.featured=TRUE`);
-    }
+      const off =
+        (
+          Math.max(
+            Number(page) || 1,
+            1
+          ) - 1
+        ) * lim;
 
-    if (search) {
-      params.push(`%${search}%`);
-      const p = `$${params.length}`;
+      params.push(lim);
 
-      conditions.push(
-        `(a.title ILIKE ${p}
-          OR a.excerpt ILIKE ${p}
-          OR a.content ILIKE ${p})`
+      const limitParam =
+        `$${params.length}`;
+
+      params.push(off);
+
+      const offsetParam =
+        `$${params.length}`;
+
+      const where =
+        conditions.length
+          ? `WHERE ${conditions.join(
+              " AND "
+            )}`
+          : "";
+
+      const order =
+        status === "all"
+          ? `
+            a.updated_at DESC,
+            a.published_at DESC
+          `
+          : `
+            a.featured DESC,
+            a.published_at DESC
+          `;
+
+      const r = await query(
+        `
+        SELECT
+          a.*,
+          c.name AS category_name,
+          c.slug AS category_slug
+        FROM articles a
+        LEFT JOIN categories c
+          ON c.id=a.category_id
+        ${where}
+        ORDER BY
+          ${order}
+        LIMIT ${limitParam}
+        OFFSET ${offsetParam}
+        `,
+        params
       );
+
+      res.json(
+        r.rows.map(articleRow)
+      );
+    } catch (e) {
+      console.error(e);
+
+      res.status(500).json({
+        error:
+          "Failed to load articles"
+      });
     }
-
-    const lim = Math.min(
-      Number(limit) || 30,
-      100
-    );
-
-    const off =
-      (Math.max(Number(page) || 1, 1) - 1) *
-      lim;
-
-    params.push(lim);
-    const limitParam = `$${params.length}`;
-
-    params.push(off);
-    const offsetParam = `$${params.length}`;
-
-    const r = await query(
-      `
-      SELECT
-        a.*,
-        c.name AS category_name,
-        c.slug AS category_slug
-      FROM articles a
-      LEFT JOIN categories c
-        ON c.id=a.category_id
-      WHERE ${conditions.join(" AND ")}
-      ORDER BY
-        a.featured DESC,
-        a.published_at DESC
-      LIMIT ${limitParam}
-      OFFSET ${offsetParam}
-      `,
-      params
-    );
-
-    res.json(r.rows.map(articleRow));
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({
-      error: "Failed to load articles"
-    });
   }
-});
+);
 
 /* ==========================================
    SINGLE ARTICLE
@@ -757,11 +789,13 @@ app.get(
 
       if (!r.rowCount) {
         return res.status(404).json({
-          error: "Article not found"
+          error:
+            "Article not found"
         });
       }
 
-      const article = r.rows[0];
+      const article =
+        r.rows[0];
 
       await query(
         `
@@ -773,13 +807,19 @@ app.get(
       );
 
       article.views =
-        Number(article.views || 0) + 1;
+        Number(
+          article.views || 0
+        ) + 1;
 
-      res.json(articleRow(article));
+      res.json(
+        articleRow(article)
+      );
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to load article"
+        error:
+          "Failed to load article"
       });
     }
   }
@@ -807,14 +847,17 @@ app.post(
 
       if (!title) {
         return res.status(400).json({
-          error: "Title is required."
+          error:
+            "Title is required."
         });
       }
 
       const slug =
         slugify(title) +
         "-" +
-        Date.now().toString().slice(-5);
+        Date.now()
+          .toString()
+          .slice(-5);
 
       const r = await query(
         `
@@ -841,17 +884,24 @@ app.post(
           content || "",
           image || "",
           category_id || null,
-          author || "YouthNews",
+          author ||
+            "YouthNews",
           status,
           !!featured
         ]
       );
 
-      res.json(articleRow(r.rows[0]));
+      res.json(
+        articleRow(
+          r.rows[0]
+        )
+      );
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to create article"
+        error:
+          "Failed to create article"
       });
     }
   }
@@ -877,7 +927,7 @@ app.put(
         featured
       } = req.body;
 
-      await query(
+      const r = await query(
         `
         UPDATE articles
         SET
@@ -891,6 +941,7 @@ app.put(
           featured=$8,
           updated_at=NOW()
         WHERE id=$9
+        RETURNING *
         `,
         [
           title,
@@ -898,18 +949,35 @@ app.put(
           content || "",
           image || "",
           category_id || null,
-          author || "YouthNews",
-          status || "published",
+          author ||
+            "YouthNews",
+          status ||
+            "published",
           !!featured,
           req.params.id
         ]
       );
 
-      res.json({ ok: true });
+      if (!r.rowCount) {
+        return res.status(404).json({
+          error:
+            "Article not found"
+        });
+      }
+
+      res.json({
+        ok: true,
+        article:
+          articleRow(
+            r.rows[0]
+          )
+      });
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to update article"
+        error:
+          "Failed to update article"
       });
     }
   }
@@ -925,82 +993,208 @@ app.delete(
   async (req, res) => {
     try {
       await query(
-        `DELETE FROM articles WHERE id=$1`,
+        `
+        DELETE FROM articles
+        WHERE id=$1
+        `,
         [req.params.id]
       );
 
-      res.json({ ok: true });
+      res.json({
+        ok: true
+      });
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to delete article"
+        error:
+          "Failed to delete article"
       });
     }
   }
 );
 
 /* ==========================================
-   LOGIN
+   ADMIN LOGIN
 ========================================== */
 
-app.post("/api/login", async (req, res) => {
-  try {
-    const {
-      username,
-      password
-    } = req.body;
-
-    const r = await query(
-      `
-      SELECT *
-      FROM users
-      WHERE username=$1
-      AND password_hash=$2
-      `,
-      [
+app.post(
+  "/api/login",
+  async (req, res) => {
+    try {
+      const {
         username,
-        hash(password || "")
-      ]
-    );
+        password
+      } = req.body;
 
-    if (!r.rowCount) {
-      return res.status(401).json({
+      if (!username || !password) {
+        return res.status(400).json({
+          error:
+            "Username and password are required."
+        });
+      }
+
+      const r = await query(
+        `
+        SELECT
+          id,
+          username,
+          password_hash
+        FROM users
+        WHERE username=$1
+        LIMIT 1
+        `,
+        [username]
+      );
+
+      if (!r.rowCount) {
+        return res.status(401).json({
+          error:
+            "Invalid username or password."
+        });
+      }
+
+      const user =
+        r.rows[0];
+
+      if (
+        hash(password) !==
+        user.password_hash
+      ) {
+        return res.status(401).json({
+          error:
+            "Invalid username or password."
+        });
+      }
+
+      /*
+       * Create a fresh session after
+       * successful Admin authentication.
+       */
+      req.session.regenerate(
+        (err) => {
+          if (err) {
+            console.error(
+              "Session regenerate error:",
+              err
+            );
+
+            return res.status(500).json({
+              error:
+                "Could not create login session."
+            });
+          }
+
+          req.session.user = {
+            id: user.id,
+            username:
+              user.username
+          };
+
+          /*
+           * Explicitly save the session
+           * before sending login success.
+           *
+           * This prevents the Admin page
+           * from immediately making another
+           * request before the session exists
+           * in PostgreSQL.
+           */
+          req.session.save(
+            (err) => {
+              if (err) {
+                console.error(
+                  "Session save error:",
+                  err
+                );
+
+                return res.status(500).json({
+                  error:
+                    "Could not save login session."
+                });
+              }
+
+              return res.json({
+                ok: true,
+                username:
+                  user.username
+              });
+            }
+          );
+        }
+      );
+    } catch (e) {
+      console.error(
+        "Admin login error:",
+        e
+      );
+
+      res.status(500).json({
         error:
-          "Invalid username or password."
+          "Login failed"
       });
     }
-
-    req.session.user = {
-      id: r.rows[0].id,
-      username: r.rows[0].username
-    };
-
-    res.json({
-      ok: true,
-      username: r.rows[0].username
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({
-      error: "Login failed"
-    });
   }
-});
+);
+
+/* ==========================================
+   ADMIN LOGOUT
+========================================== */
 
 app.post(
   "/api/logout",
   (req, res) => {
-    req.session.destroy(() => {
-      res.json({ ok: true });
-    });
+    if (!req.session) {
+      return res.json({
+        ok: true
+      });
+    }
+
+    req.session.destroy(
+      (err) => {
+        if (err) {
+          console.error(
+            "Logout error:",
+            err
+          );
+
+          return res.status(500).json({
+            error:
+              "Logout failed"
+          });
+        }
+
+        res.clearCookie(
+          "connect.sid",
+          {
+            httpOnly: true,
+            sameSite: "lax",
+            secure:
+              process.env.NODE_ENV ===
+              "production"
+          }
+        );
+
+        return res.json({
+          ok: true
+        });
+      }
+    );
   }
 );
+
+/* ==========================================
+   ADMIN SESSION CHECK
+========================================== */
 
 app.get(
   "/api/me",
   (req, res) => {
     res.json(
-      req.session.user || null
+      req.session &&
+        req.session.user
+        ? req.session.user
+        : null
     );
   }
 );
@@ -1009,20 +1203,29 @@ app.get(
    IMAGE UPLOAD - SUPABASE STORAGE
 ========================================== */
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 8 * 1024 * 1024
-  },
-  fileFilter: (_, file, cb) => {
-    cb(
-      null,
-      /^image\/(jpeg|png|webp|gif)$/.test(
-        file.mimetype
-      )
-    );
-  }
-});
+const upload =
+  multer({
+    storage:
+      multer.memoryStorage(),
+
+    limits: {
+      fileSize:
+        8 * 1024 * 1024
+    },
+
+    fileFilter: (
+      _,
+      file,
+      cb
+    ) => {
+      cb(
+        null,
+        /^image\/(jpeg|png|webp|gif)$/.test(
+          file.mimetype
+        )
+      );
+    }
+  });
 
 app.post(
   "/api/upload",
@@ -1032,40 +1235,62 @@ app.post(
     try {
       if (!req.file) {
         return res.status(400).json({
-          error: "Please select an image."
+          error:
+            "Please select an image."
         });
       }
 
       const ext =
-        path.extname(req.file.originalname)
-          .toLowerCase() || ".jpg";
+        path
+          .extname(
+            req.file.originalname
+          )
+          .toLowerCase() ||
+        ".jpg";
 
       const filename =
         Date.now() +
         "-" +
-        crypto.randomBytes(6).toString("hex") +
+        crypto
+          .randomBytes(6)
+          .toString("hex") +
         ext;
 
-      const storagePath = `articles/${filename}`;
+      const storagePath =
+        `articles/${filename}`;
 
       const uploadUrl =
         `${SUPABASE_URL}/storage/v1/object/news-images/${storagePath}`;
 
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers: {
-          Authorization:
-            `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          apikey:
-            SUPABASE_SERVICE_ROLE_KEY,
-          "Content-Type":
-            req.file.mimetype,
-          "x-upsert": "false"
-        },
-        body: req.file.buffer
-      });
+      const response =
+        await fetch(
+          uploadUrl,
+          {
+            method:
+              "POST",
 
-      const result = await response.text();
+            headers: {
+              Authorization:
+                `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+
+              apikey:
+                SUPABASE_SERVICE_ROLE_KEY,
+
+              "Content-Type":
+                req.file
+                  .mimetype,
+
+              "x-upsert":
+                "false"
+            },
+
+            body:
+              req.file.buffer
+          }
+        );
+
+      const result =
+        await response.text();
 
       if (!response.ok) {
         console.error(
@@ -1083,9 +1308,9 @@ app.post(
         `${SUPABASE_URL}/storage/v1/object/public/news-images/${storagePath}`;
 
       res.json({
-        url: publicUrl
+        url:
+          publicUrl
       });
-
     } catch (e) {
       console.error(
         "Image upload error:",
@@ -1093,11 +1318,13 @@ app.post(
       );
 
       res.status(500).json({
-        error: "Image upload failed."
+        error:
+          "Image upload failed."
       });
     }
   }
 );
+
 /* ==========================================
    HOMEPAGE SECTIONS
 ========================================== */
@@ -1114,14 +1341,18 @@ app.get(
         FROM homepage_sections s
         LEFT JOIN categories c
           ON c.id=s.category_id
-        ORDER BY s.position,s.id
+        ORDER BY
+          s.position,
+          s.id
       `);
 
       res.json(r.rows);
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to load sections"
+        error:
+          "Failed to load sections"
       });
     }
   }
@@ -1134,12 +1365,20 @@ app.post(
     try {
       const {
         title,
-        section_type = "category",
+        section_type =
+          "category",
         category_id,
         position = 0,
         columns_count = 2,
         enabled = true
       } = req.body;
+
+      if (!title) {
+        return res.status(400).json({
+          error:
+            "Section title is required."
+        });
+      }
 
       const r = await query(
         `
@@ -1152,24 +1391,30 @@ app.post(
           columns_count,
           enabled
         )
-        VALUES($1,$2,$3,$4,$5,$6)
+        VALUES
+        ($1,$2,$3,$4,$5,$6)
         RETURNING *
         `,
         [
           title,
           section_type,
-          category_id || null,
+          category_id ||
+            null,
           position,
           columns_count,
           !!enabled
         ]
       );
 
-      res.json(r.rows[0]);
+      res.json(
+        r.rows[0]
+      );
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to create section"
+        error:
+          "Failed to create section"
       });
     }
   }
@@ -1189,7 +1434,7 @@ app.put(
         enabled
       } = req.body;
 
-      await query(
+      const r = await query(
         `
         UPDATE homepage_sections
         SET
@@ -1200,11 +1445,13 @@ app.put(
           columns_count=$5,
           enabled=$6
         WHERE id=$7
+        RETURNING *
         `,
         [
           title,
           section_type,
-          category_id || null,
+          category_id ||
+            null,
           position,
           columns_count,
           !!enabled,
@@ -1212,11 +1459,24 @@ app.put(
         ]
       );
 
-      res.json({ ok: true });
+      if (!r.rowCount) {
+        return res.status(404).json({
+          error:
+            "Section not found"
+        });
+      }
+
+      res.json({
+        ok: true,
+        section:
+          r.rows[0]
+      });
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to update section"
+        error:
+          "Failed to update section"
       });
     }
   }
@@ -1228,15 +1488,22 @@ app.delete(
   async (req, res) => {
     try {
       await query(
-        `DELETE FROM homepage_sections WHERE id=$1`,
+        `
+        DELETE FROM homepage_sections
+        WHERE id=$1
+        `,
         [req.params.id]
       );
 
-      res.json({ ok: true });
+      res.json({
+        ok: true
+      });
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to delete section"
+        error:
+          "Failed to delete section"
       });
     }
   }
@@ -1246,23 +1513,30 @@ app.delete(
    EVENTS
 ========================================== */
 
-app.get("/api/events", async (req, res) => {
-  try {
-    const r = await query(`
-      SELECT *
-      FROM events
-      WHERE enabled=TRUE
-      ORDER BY position,id
-    `);
+app.get(
+  "/api/events",
+  async (req, res) => {
+    try {
+      const r = await query(`
+        SELECT *
+        FROM events
+        WHERE enabled=TRUE
+        ORDER BY
+          position,
+          id
+      `);
 
-    res.json(r.rows);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({
-      error: "Failed to load events"
-    });
+      res.json(r.rows);
+    } catch (e) {
+      console.error(e);
+
+      res.status(500).json({
+        error:
+          "Failed to load events"
+      });
+    }
   }
-});
+);
 
 app.post(
   "/api/events",
@@ -1279,6 +1553,13 @@ app.post(
         position = 0
       } = req.body;
 
+      if (!title) {
+        return res.status(400).json({
+          error:
+            "Event title is required."
+        });
+      }
+
       const r = await query(
         `
         INSERT INTO events
@@ -1291,25 +1572,129 @@ app.post(
           enabled,
           position
         )
-        VALUES($1,$2,$3,$4,$5,$6,$7)
+        VALUES
+        ($1,$2,$3,$4,$5,$6,$7)
         RETURNING *
         `,
         [
           title,
-          event_date || null,
-          event_time || "",
-          location || "",
-          description || "",
+          event_date ||
+            null,
+          event_time ||
+            "",
+          location ||
+            "",
+          description ||
+            "",
           !!enabled,
           position
         ]
       );
 
-      res.json(r.rows[0]);
+      res.json(
+        r.rows[0]
+      );
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to create event"
+        error:
+          "Failed to create event"
+      });
+    }
+  }
+);
+
+app.put(
+  "/api/events/:id",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const {
+        title,
+        event_date,
+        event_time,
+        location,
+        description,
+        enabled,
+        position
+      } = req.body;
+
+      const r = await query(
+        `
+        UPDATE events
+        SET
+          title=$1,
+          event_date=$2,
+          event_time=$3,
+          location=$4,
+          description=$5,
+          enabled=$6,
+          position=$7
+        WHERE id=$8
+        RETURNING *
+        `,
+        [
+          title,
+          event_date ||
+            null,
+          event_time ||
+            "",
+          location ||
+            "",
+          description ||
+            "",
+          !!enabled,
+          position,
+          req.params.id
+        ]
+      );
+
+      if (!r.rowCount) {
+        return res.status(404).json({
+          error:
+            "Event not found"
+        });
+      }
+
+      res.json({
+        ok: true,
+        event:
+          r.rows[0]
+      });
+    } catch (e) {
+      console.error(e);
+
+      res.status(500).json({
+        error:
+          "Failed to update event"
+      });
+    }
+  }
+);
+
+app.delete(
+  "/api/events/:id",
+  requireAuth,
+  async (req, res) => {
+    try {
+      await query(
+        `
+        DELETE FROM events
+        WHERE id=$1
+        `,
+        [req.params.id]
+      );
+
+      res.json({
+        ok: true
+      });
+    } catch (e) {
+      console.error(e);
+
+      res.status(500).json({
+        error:
+          "Failed to delete event"
       });
     }
   }
@@ -1327,14 +1712,18 @@ app.get(
         SELECT *
         FROM trending_topics
         WHERE enabled=TRUE
-        ORDER BY position,id
+        ORDER BY
+          position,
+          id
       `);
 
       res.json(r.rows);
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to load trending"
+        error:
+          "Failed to load trending"
       });
     }
   }
@@ -1352,6 +1741,13 @@ app.post(
         enabled = true
       } = req.body;
 
+      if (!label) {
+        return res.status(400).json({
+          error:
+            "Trending label is required."
+        });
+      }
+
       const r = await query(
         `
         INSERT INTO trending_topics
@@ -1361,22 +1757,111 @@ app.post(
           position,
           enabled
         )
-        VALUES($1,$2,$3,$4)
+        VALUES
+        ($1,$2,$3,$4)
         RETURNING *
         `,
         [
           label,
-          slug || slugify(label),
+          slug ||
+            slugify(label),
           position,
           !!enabled
         ]
       );
 
-      res.json(r.rows[0]);
+      res.json(
+        r.rows[0]
+      );
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to create trending topic"
+        error:
+          "Failed to create trending topic"
+      });
+    }
+  }
+);
+
+app.put(
+  "/api/trending/:id",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const {
+        label,
+        slug,
+        position,
+        enabled
+      } = req.body;
+
+      const r = await query(
+        `
+        UPDATE trending_topics
+        SET
+          label=$1,
+          slug=$2,
+          position=$3,
+          enabled=$4
+        WHERE id=$5
+        RETURNING *
+        `,
+        [
+          label,
+          slug ||
+            slugify(label),
+          position,
+          !!enabled,
+          req.params.id
+        ]
+      );
+
+      if (!r.rowCount) {
+        return res.status(404).json({
+          error:
+            "Trending topic not found"
+        });
+      }
+
+      res.json({
+        ok: true,
+        trending:
+          r.rows[0]
+      });
+    } catch (e) {
+      console.error(e);
+
+      res.status(500).json({
+        error:
+          "Failed to update trending topic"
+      });
+    }
+  }
+);
+
+app.delete(
+  "/api/trending/:id",
+  requireAuth,
+  async (req, res) => {
+    try {
+      await query(
+        `
+        DELETE FROM trending_topics
+        WHERE id=$1
+        `,
+        [req.params.id]
+      );
+
+      res.json({
+        ok: true
+      });
+    } catch (e) {
+      console.error(e);
+
+      res.status(500).json({
+        error:
+          "Failed to delete trending topic"
       });
     }
   }
@@ -1394,14 +1879,18 @@ app.get(
         SELECT *
         FROM navigation
         WHERE enabled=TRUE
-        ORDER BY position,id
+        ORDER BY
+          position,
+          id
       `);
 
       res.json(r.rows);
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to load navigation"
+        error:
+          "Failed to load navigation"
       });
     }
   }
@@ -1419,6 +1908,13 @@ app.post(
         enabled = true
       } = req.body;
 
+      if (!label || !url) {
+        return res.status(400).json({
+          error:
+            "Label and URL are required."
+        });
+      }
+
       const r = await query(
         `
         INSERT INTO navigation
@@ -1428,7 +1924,8 @@ app.post(
           position,
           enabled
         )
-        VALUES($1,$2,$3,$4)
+        VALUES
+        ($1,$2,$3,$4)
         RETURNING *
         `,
         [
@@ -1439,18 +1936,104 @@ app.post(
         ]
       );
 
-      res.json(r.rows[0]);
+      res.json(
+        r.rows[0]
+      );
     } catch (e) {
       console.error(e);
+
       res.status(500).json({
-        error: "Failed to create navigation item"
+        error:
+          "Failed to create navigation item"
+      });
+    }
+  }
+);
+
+app.put(
+  "/api/navigation/:id",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const {
+        label,
+        url,
+        position,
+        enabled
+      } = req.body;
+
+      const r = await query(
+        `
+        UPDATE navigation
+        SET
+          label=$1,
+          url=$2,
+          position=$3,
+          enabled=$4
+        WHERE id=$5
+        RETURNING *
+        `,
+        [
+          label,
+          url,
+          position,
+          !!enabled,
+          req.params.id
+        ]
+      );
+
+      if (!r.rowCount) {
+        return res.status(404).json({
+          error:
+            "Navigation item not found"
+        });
+      }
+
+      res.json({
+        ok: true,
+        navigation:
+          r.rows[0]
+      });
+    } catch (e) {
+      console.error(e);
+
+      res.status(500).json({
+        error:
+          "Failed to update navigation item"
+      });
+    }
+  }
+);
+
+app.delete(
+  "/api/navigation/:id",
+  requireAuth,
+  async (req, res) => {
+    try {
+      await query(
+        `
+        DELETE FROM navigation
+        WHERE id=$1
+        `,
+        [req.params.id]
+      );
+
+      res.json({
+        ok: true
+      });
+    } catch (e) {
+      console.error(e);
+
+      res.status(500).json({
+        error:
+          "Failed to delete navigation item"
       });
     }
   }
 );
 
 /* ==========================================
-   ADMIN
+   ADMIN PAGE
 ========================================== */
 
 app.get(
@@ -1469,19 +2052,28 @@ app.get(
    SPA FALLBACK
 ========================================== */
 
-app.get("/*splat", (req, res) => {
-  if (req.path.startsWith("/api/")) {
-    return res.status(404).end();
-  }
+app.get(
+  "/*splat",
+  (req, res) => {
+    if (
+      req.path.startsWith(
+        "/api/"
+      )
+    ) {
+      return res
+        .status(404)
+        .end();
+    }
 
-  res.sendFile(
-    path.join(
-      ROOT,
-      "public",
-      "index.html"
-    )
-  );
-});
+    res.sendFile(
+      path.join(
+        ROOT,
+        "public",
+        "index.html"
+      )
+    );
+  }
+);
 
 /* ==========================================
    START
@@ -1489,16 +2081,20 @@ app.get("/*splat", (req, res) => {
 
 setup()
   .then(() => {
-    app.listen(PORT, () => {
-      console.log(
-        `YouthNews running on port ${PORT}`
-      );
-    });
+    app.listen(
+      PORT,
+      () => {
+        console.log(
+          `YouthNews running on port ${PORT}`
+        );
+      }
+    );
   })
-  .catch(err => {
+  .catch((err) => {
     console.error(
       "Database startup failed:",
       err
     );
+
     process.exit(1);
   });
