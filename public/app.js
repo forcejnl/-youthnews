@@ -6,133 +6,81 @@ const supabaseClient = supabase.createClient(
   SUPABASE_ANON_KEY
 );
 
-const $ = id => document.getElementById(id);
+const $=id=>document.getElementById(id);
 
-const esc = s =>
-  String(s ?? "").replace(
+const esc=s=>
+  String(s??"").replace(
     /[&<>"']/g,
-    m => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
+    m=>({
+      "&":"&amp;",
+      "<":"&lt;",
+      ">":"&gt;",
+      '"':"&quot;",
+      "'":"&#39;"
     }[m])
   );
 
-async function api(u) {
-  const r = await fetch(u);
-  if (!r.ok) throw new Error("API error");
-  return r.json();
+async function api(u){
+  const r=await fetch(u);
+  if(!r.ok)throw new Error("API error");
+  return r.json()
 }
 
-/* =========================
-   NAVIGATION
-========================= */
-
-function categorySlug(name) {
-  return String(name || "")
-    .trim()
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+function articleCard(a){
+  return `<a class="newsCard" href="/article.html?slug=${encodeURIComponent(a.slug)}">
+    <div class="thumb">${a.image?`<img src="${esc(a.image)}">`:""}</div>
+    <div class="newsInfo">
+      <b>${esc(a.category_name||"NEWS")}</b>
+      <h3>${esc(a.title)}</h3>
+      <small>
+        ${Math.max(
+          1,
+          Math.ceil(
+            String(a.content||"").split(/\s+/).length/180
+          )
+        )}
+        min read ·
+        ${
+          a.published_at
+            ? new Date(a.published_at)
+                .toLocaleDateString(
+                  "en-US",
+                  {month:"short",day:"numeric"}
+                )
+            : "Today"
+        }
+      </small>
+    </div>
+  </a>`;
 }
 
-function navigationUrl(item) {
-  const label = String(item.label || "").trim();
-
-  if (label.toLowerCase() === "home") {
-    return "/";
-  }
-
-  /* Known YouthNews categories */
-  const categoryMap = {
-    "RMUTK News": "rmutk-news",
-    "General": "general",
-    "Training News": "training-news",
-    "Career": "career",
-    "Student Voice": "student-voice"
-  };
-
-  const slug = categoryMap[label] || categorySlug(label);
-
-  return `/?category=${encodeURIComponent(slug)}`;
+function heroCard(a,button){
+  return `<article
+    class="heroCard"
+    ${
+      a.image
+        ? `style="background-image:linear-gradient(90deg,rgba(10,18,12,.2),rgba(0,0,0,.8)),url('${esc(a.image)}')"`
+        : ""
+    }
+  >
+    <div>
+      <span class="limeTag">
+        ${esc(a.category_name||"FEATURED")}
+      </span>
+      <h1>${esc(a.title)}</h1>
+      <p>${esc(a.excerpt||"")}</p>
+      <a
+        href="/article.html?slug=${encodeURIComponent(a.slug)}"
+        class="limeBtn"
+      >
+        ${esc(button||"Read More")}
+      </a>
+    </div>
+  </article>`;
 }
 
-/* =========================
-   ARTICLE CARDS
-========================= */
+async function init(){
 
-function articleCard(a) {
-  return `
-    <a class="newsCard" href="/article.html?slug=${encodeURIComponent(a.slug)}">
-      <div class="thumb">
-        ${a.image ? `<img src="${esc(a.image)}">` : ""}
-      </div>
-
-      <div class="newsInfo">
-        <b>${esc(a.category_name || "NEWS")}</b>
-
-        <h3>${esc(a.title)}</h3>
-
-        <small>
-          ${Math.max(
-            1,
-            Math.ceil(
-              String(a.content || "").split(/\s+/).length / 180
-            )
-          )}
-          min read ·
-          ${
-            a.published_at
-              ? new Date(a.published_at).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric"
-                })
-              : "Today"
-          }
-        </small>
-      </div>
-    </a>
-  `;
-}
-
-function heroCard(a, button) {
-  return `
-    <article
-      class="heroCard"
-      ${
-        a.image
-          ? `style="background-image:linear-gradient(90deg,rgba(10,18,12,.2),rgba(0,0,0,.8)),url('${esc(a.image)}')"`
-          : ""
-      }
-    >
-      <div>
-        <span class="limeTag">
-          ${esc(a.category_name || "FEATURED")}
-        </span>
-
-        <h1>${esc(a.title)}</h1>
-
-        <p>${esc(a.excerpt || "")}</p>
-
-        <a
-          href="/article.html?slug=${encodeURIComponent(a.slug)}"
-          class="limeBtn"
-        >
-          ${esc(button || "Read More")}
-        </a>
-      </div>
-    </article>
-  `;
-}
-
-/* =========================
-   MAIN
-========================= */
-
-async function init() {
   const [
     settings,
     nav,
@@ -142,7 +90,7 @@ async function init() {
     sections,
     featured,
     latest
-  ] = await Promise.all([
+  ]=await Promise.all([
     api("/api/settings"),
     api("/api/navigation"),
     api("/api/trending"),
@@ -157,235 +105,164 @@ async function init() {
     settings.search_placeholder ||
     "Search news, people, or topics...";
 
-  /* =========================
-     LEFT NAVIGATION
-  ========================= */
+  $("sideNav").innerHTML=
+    nav.map((n,i)=>
+      `<a
+        class="${i===0?"active":""}"
+        href="${esc(n.url)}"
+      >
+        ${
+          i===0
+            ?"⌂"
+            :i===1
+            ?"♧"
+            :i===2
+            ?"◉"
+            :i===3
+            ?"◇"
+            :i===4
+            ?"⌕"
+            :i===5
+            ?"♧"
+            :"◌"
+        }
+        <span>${esc(n.label)}</span>
+      </a>`
+    ).join("");
 
-  $("sideNav").innerHTML = nav
-    .map((n, i) => {
-      const url = navigationUrl(n);
+  const f=featured[0]||latest[0];
 
-      return `
-        <a
-          class="${i === 0 ? "active" : ""}"
-          href="${esc(url)}"
-          data-nav-url="${esc(url)}"
-        >
-          ${
-            i === 0
-              ? "⌂"
-              : i === 1
-              ? "♧"
-              : i === 2
-              ? "◉"
-              : i === 3
-              ? "◇"
-              : i === 4
-              ? "⌕"
-              : i === 5
-              ? "♧"
-              : "◌"
-          }
+  $("hero").innerHTML=
+    f
+      ? heroCard(f,settings.hero_button)
+      : "";
 
-          <span>${esc(n.label)}</span>
-        </a>
-      `;
-    })
-    .join("");
+  $("trending").innerHTML=
+    trending.map(t=>
+      `<a href="/?search=${encodeURIComponent(
+        t.label.replace(/^#/,"")
+      )}">
+        ${esc(t.label)}
+      </a>`
+    ).join("");
 
-  /* Force navigation on iPad/Safari */
-  $("sideNav").addEventListener("click", event => {
-    const link = event.target.closest("a");
-
-    if (!link) return;
-
-    const url = link.getAttribute("data-nav-url");
-
-    if (url) {
-      event.preventDefault();
-      window.location.href = url;
-    }
-  });
-
-  /* =========================
-     HERO
-  ========================= */
-
-  const f = featured[0] || latest[0];
-
-  $("hero").innerHTML = f
-    ? heroCard(f, settings.hero_button)
-    : "";
-
-  /* =========================
-     TRENDING
-  ========================= */
-
-  $("trending").innerHTML = trending
-    .map(
-      t => `
-        <a href="/?search=${encodeURIComponent(
-          t.label.replace(/^#/, "")
-        )}">
-          ${esc(t.label)}
-        </a>
-      `
-    )
-    .join("");
-
-  $("trendingBottom").innerHTML =
+  $("trendingBottom").innerHTML=
     $("trending").innerHTML;
 
-  /* =========================
-     CATEGORIES
-  ========================= */
-
-  $("categories").innerHTML = cats
-    .map(
-      c => `
-        <li>
-          <a href="/?category=${encodeURIComponent(c.slug)}">
-            ${esc(c.name)}
-          </a>
-        </li>
-      `
-    )
-    .join("");
-
-  /* =========================
-     EVENTS
-  ========================= */
-
-  $("events").innerHTML = events
-    .map(
-      e => `
-        <div class="event">
-          <strong>
-            ${esc(e.day)}
-            <span>${esc(e.month)}</span>
-          </strong>
-
-          <div>
-            ${esc(e.title)}
-            <small>${esc(e.details || "")}</small>
-          </div>
-        </div>
-      `
-    )
-    .join("");
-
-  /* =========================
-     QUICK NEWS
-  ========================= */
-
-  $("quickGrid").innerHTML = latest
-    .slice(0, 4)
-    .map(
-      (a, i) => `
-        <a
-          href="/article.html?slug=${encodeURIComponent(a.slug)}"
-          class="quickCard"
-        >
-          <b>${String(i + 1).padStart(2, "0")}</b>
-          <span>${esc(a.title)}</span>
+  $("categories").innerHTML=
+    cats.map(c=>
+      `<li>
+        <a href="/?category=${encodeURIComponent(c.slug)}">
+          ${esc(c.name)}
         </a>
-      `
-    )
-    .join("");
+      </li>`
+    ).join("");
 
-  /* =========================
-     FILTER BUTTONS
-  ========================= */
+  $("events").innerHTML=
+    events.map(e=>
+      `<div class="event">
+        <strong>
+          ${esc(e.day)}
+          <span>${esc(e.month)}</span>
+        </strong>
+        <div>
+          ${esc(e.title)}
+          <small>${esc(e.details||"")}</small>
+        </div>
+      </div>`
+    ).join("");
 
-  $("filterPills").innerHTML =
-    `<a class="selected" href="/">All stories</a>` +
-    cats
-      .map(
-        c => `
-          <a href="/?category=${encodeURIComponent(c.slug)}">
-            ${esc(c.name)}
-          </a>
-        `
-      )
-      .join("");
+  $("quickGrid").innerHTML=
+    latest.slice(0,4).map((a,i)=>
+      `<a
+        href="/article.html?slug=${encodeURIComponent(a.slug)}"
+        class="quickCard"
+      >
+        <b>${String(i+1).padStart(2,"0")}</b>
+        <span>${esc(a.title)}</span>
+      </a>`
+    ).join("");
 
-  /* =========================
-     HOMEPAGE SECTIONS
-  ========================= */
+  $("filterPills").innerHTML=
+    `<a class="selected" href="/">All stories</a>`+
+    cats.map(c=>
+      `<a href="/?category=${encodeURIComponent(c.slug)}">
+        ${esc(c.name)}
+      </a>`
+    ).join("");
 
-  $("sections").innerHTML = await Promise.all(
-    sections.map(async s => {
-      const a = await api(
-        `/api/articles?category=${encodeURIComponent(
-          s.category_slug || ""
-        )}&limit=${s.article_limit || 2}`
-      );
+  $("sections").innerHTML=
+    await Promise.all(
+      sections.map(async s=>{
+        const a=await api(
+          `/api/articles?category=${encodeURIComponent(
+            s.category_slug||""
+          )}&limit=${s.article_limit||2}`
+        );
 
-      return `
-        <section class="newsSection">
+        return `
+          <section class="newsSection">
+            <div class="sectionTitle">
+              <h2>${esc(s.title)}</h2>
+              <a href="/?category=${encodeURIComponent(
+                s.category_slug||""
+              )}">
+                See all
+              </a>
+            </div>
 
-          <div class="sectionTitle">
-            <h2>${esc(s.title)}</h2>
+            <div class="newsGrid cols${
+              Math.min(
+                Math.max(
+                  Number(s.columns)||2,
+                  1
+                ),
+                4
+              )
+            }">
+              ${a.map(articleCard).join("")}
+            </div>
+          </section>
+        `;
+      })
+    ).then(x=>x.join(""));
 
-            <a
-              href="/?category=${encodeURIComponent(
-                s.category_slug || ""
-              )}"
-            >
-              See all
-            </a>
-          </div>
-
-          <div class="newsGrid cols${Math.min(
-            Math.max(Number(s.columns) || 2, 1),
-            4
-          )}">
-            ${a.map(articleCard).join("")}
-          </div>
-
-        </section>
-      `;
-    })
-  ).then(x => x.join(""));
-
-  /* =========================
-     FOOTER
-  ========================= */
-
-  $("footer").textContent =
+  $("footer").textContent=
     settings.footer_text ||
     "© Youth News · Stories for the next generation.";
 
-  /* =========================
-     URL FILTER
-  ========================= */
+  const params=
+    new URLSearchParams(location.search);
 
-  const params = new URLSearchParams(
-    location.search
-  );
+  /*
+    CATEGORY / SEARCH PAGE
+    This is what makes the left menu
+    show the articles in that category.
+  */
 
-  if (
+  if(
     params.get("search") ||
     params.get("category") ||
     params.get("all")
-  ) {
-    const query = params.get("search")
-      ? `?search=${encodeURIComponent(
-          params.get("search")
-        )}`
-      : params.get("category")
-      ? `?category=${encodeURIComponent(
-          params.get("category")
-        )}`
-      : "?limit=100";
+  ){
 
-    const results = await api(
-      "/api/articles" + query
-    );
+    const query=
+      params.get("search")
+        ? `?search=${encodeURIComponent(
+            params.get("search")
+          )}`
+        : params.get("category")
+        ? `?category=${encodeURIComponent(
+            params.get("category")
+          )}`
+        : "?limit=100";
 
-    $("hero").innerHTML = "";
+    const results=
+      await api("/api/articles"+query);
 
-    $("sections").innerHTML = `
+    $("hero").innerHTML="";
+
+    $("sections").innerHTML=`
       <section class="newsSection">
 
         <div class="sectionTitle">
@@ -410,35 +287,21 @@ async function init() {
   }
 }
 
-/* =========================
-   SEARCH
-========================= */
+function doSearch(){
+  const q=$("searchInput").value.trim();
 
-function doSearch() {
-  const q = $("searchInput").value.trim();
-
-  if (q) {
-    window.location.href =
-      "/?search=" + encodeURIComponent(q);
-  }
+  if(q)
+    location.href=
+      "/?search="+encodeURIComponent(q)
 }
 
-/* =========================
-   START
-========================= */
-
-init().catch(e => {
+init().catch(e=>{
   console.error(e);
 
-  document.getElementById("hero").innerHTML = `
-    <div class="heroCard">
-      <div>
-        <h1>Unable to load YouthNews</h1>
-        <p>
-          Check that the server is running
-          and the API is available.
-        </p>
-      </div>
-    </div>
-  `;
+  document.getElementById("hero").innerHTML=
+    "<div class='heroCard'><div>" +
+    "<h1>Unable to load YouthNews</h1>" +
+    "<p>Check that the server is running " +
+    "and the API is available.</p>" +
+    "</div></div>";
 });
