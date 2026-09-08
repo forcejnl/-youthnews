@@ -1,19 +1,16 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Article | YouthNews</title><link rel="stylesheet" href="/style.css"></head>
-<body>
-<div class="articleShell"><header class="articleTop"><a class="logo" href="/"><strong>YOUTH<br><span>NEWS</span></strong><small>CAMPUS<br>DAILY</small></a><a href="/">← Back to home</a></header>
-<main class="articlePage" id="article"></main></div>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Article | YouthNews</title><link rel="stylesheet" href="/style.css"></head>
+<body><div class="articleShell"><header class="articleTop"><a class="logo" href="/"><strong>YOUTH<br><span>NEWS</span></strong><small>CAMPUS<br>DAILY</small></a><a href="/">← Back to home</a></header><main class="articlePage" id="article"><div class="empty">Loading story…</div></main></div>
 <script>
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 const slug=new URLSearchParams(location.search).get("slug");
-fetch("/api/articles/"+encodeURIComponent(slug)).then(r=>r.json()).then(a=>{
+async function load(){
+ if(!slug) throw new Error("Missing article slug");
+ const r=await fetch("/api/articles/"+encodeURIComponent(slug),{credentials:"same-origin"});
+ const a=await r.json(); if(!r.ok) throw new Error(a.error||"Article not found");
  document.title=a.title+" | YouthNews";
- document.getElementById("article").innerHTML=
- `<div class="articleMeta">${esc(a.category_name||"News")} · ${new Date(a.published_at).toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})} · ${a.views} views</div>
- <h1>${esc(a.title)}</h1><p class="articleLead">${esc(a.excerpt||"")}</p>
- ${a.image?`<img class="articleImage" src="${esc(a.image)}">`:""}
- <div class="articleBody">${esc(a.content||"").split(/\\n\\s*\\n/).map(x=>"<p>"+x.replace(/\\n/g,"<br>")+"</p>").join("")}</div>
- <div class="author">By ${esc(a.author||"YouthNews")}</div>`;
-}).catch(()=>document.getElementById("article").innerHTML="<h1>Article not found.</h1>");
+ const paragraphs=String(a.content||"").trim().split(/\n\s*\n/).filter(Boolean).map(x=>"<p>"+esc(x).replace(/\n/g,"<br>")+"</p>").join("");
+ document.getElementById("article").innerHTML=`<div class="articleMeta">${esc(a.category_name||"News")} · ${new Date(a.published_at||Date.now()).toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})} · ${Number(a.views||0)} views</div><h1>${esc(a.title)}</h1><p class="articleLead">${esc(a.excerpt||"")}</p>${a.image?`<img class="articleImage" src="${esc(a.image)}" alt="">`:""}<div class="articleBody">${paragraphs||"<p>No article content.</p>"}</div><div class="author">By ${esc(a.author||"YouthNews")}</div>`;
+}
+load().catch(e=>{console.error(e);document.getElementById("article").innerHTML="<h1>Article not found.</h1><p class='muted'>The story may have been removed or is not published.</p>";});
 </script></body></html>

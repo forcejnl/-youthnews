@@ -1,648 +1,141 @@
 const $ = id => document.getElementById(id);
 
-const esc = s =>
-String(s ?? “”).replace(
-/[&<>”’]/g,
-m => ({
-“&”: “&”,
-“<”: “<”,
-“>”: “>”,
-‘”’: “"”,
-“’”: “'”
-}[m])
-);
-
-async function api(url) {
-const r = await fetch(url);
-
-if (!r.ok) {
-throw new Error(“API error”);
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, ch => ({
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+  }[ch]));
 }
 
-return r.json();
+function safeUrl(value, fallback = "#") {
+  const raw = String(value || fallback);
+  if (raw.startsWith("/") || raw.startsWith("#") || raw.startsWith("?") || /^https?:\/\//i.test(raw)) return raw;
+  return fallback;
 }
 
-/* =========================
-ARTICLE CARD
-========================= */
+async function api(url, options = {}) {
+  const response = await fetch(url, { credentials: "same-origin", ...options });
+  let data = null;
+  try { data = await response.json(); } catch (_) {}
+  if (!response.ok) throw new Error(data?.error || `Request failed (${response.status})`);
+  return data;
+}
 
 function articleCard(a) {
-
-return `
-  <div class="thumb">
-    ${
-      a.image
-        ? `<img src="${esc(a.image)}">`
-        : ""
-    }
-  </div>
-  <div class="newsInfo">
-    <b>
-      ${esc(a.category_name || "NEWS")}
-    </b>
-    <h3>
-      ${esc(a.title)}
-    </h3>
-    <small>
-      ${
-        Math.max(
-          1,
-          Math.ceil(
-            String(a.content || "")
-              .split(/\s+/)
-              .length / 180
-          )
-        )
-      } min read
-      ·
-      ${
-        a.published_at
-          ? new Date(a.published_at).toLocaleDateString(
-              "en-US",
-              {
-                month: "short",
-                day: "numeric"
-              }
-            )
-          : "Today"
-      }
-    </small>
-  </div>
-</a>
-
-`;
+  const image = a.image ? `<img loading="lazy" src="${esc(a.image)}" alt="">` : "";
+  const date = a.published_at ? new Date(a.published_at).toLocaleDateString("en-US", { month:"short", day:"numeric" }) : "Today";
+  const minutes = Math.max(1, Math.ceil(String(a.content || "").trim().split(/\s+/).filter(Boolean).length / 180));
+  return `<a class="newsCard" href="/article.html?slug=${encodeURIComponent(a.slug)}">
+    <div class="thumb">${image}</div>
+    <div class="newsInfo"><b>${esc(a.category_name || "NEWS")}</b><h3>${esc(a.title)}</h3><small>${minutes} min read · ${esc(date)}</small></div>
+  </a>`;
 }
-
-/* =========================
-HERO CARD
-========================= */
 
 function heroCard(a, button) {
-
-return `
-<article
-class=“heroCard”
-
-  ${
-    a.image
-      ? `style="background-image:
-          linear-gradient(
-            90deg,
-            rgba(10,18,12,.2),
-            rgba(0,0,0,.8)
-          ),
-          url('${esc(a.image)}')"`
-      : ""
-  }
->
-  <div>
-    <span class="limeTag">
-      ${esc(a.category_name || "FEATURED")}
-    </span>
-    <h1>
-      ${esc(a.title)}
-    </h1>
-    <p>
-      ${esc(a.excerpt || "")}
-    </p>
-    <a
-      href="/article.html?slug=${encodeURIComponent(a.slug)}"
-      class="limeBtn"
-    >
-      ${esc(button || "Read More")}
-    </a>
-  </div>
-</article>
-
-`;
+  const background = a.image ? ` style="background-image:linear-gradient(90deg,rgba(10,18,12,.18),rgba(0,0,0,.84)),url('${esc(a.image)}')"` : "";
+  return `<article class="heroCard"${background}><div><span class="limeTag">${esc(a.category_name || "FEATURED")}</span><h1>${esc(a.title)}</h1><p>${esc(a.excerpt || "")}</p><a href="/article.html?slug=${encodeURIComponent(a.slug)}" class="limeBtn">${esc(button || "Read More")}</a></div></article>`;
 }
 
-/* =========================
-INIT
-========================= */
+function eventCard(e) {
+  let day = "—", month = "";
+  if (e.event_date) {
+    const d = new Date(`${String(e.event_date).slice(0,10)}T00:00:00`);
+    if (!Number.isNaN(d.getTime())) { day = d.getDate(); month = d.toLocaleDateString("en-US", { month:"short" }).toUpperCase(); }
+  }
+  const meta = [e.event_time, e.location].filter(Boolean).join(" · ");
+  return `<div class="event"><strong>${esc(day)}<span>${esc(month)}</span></strong><div>${esc(e.title)}<small>${esc(meta || e.description || "")}</small></div></div>`;
+}
+
+async function loadAll() {
+  const jobs = [
+    ["settings", "/api/settings"], ["nav", "/api/navigation"], ["trending", "/api/trending"],
+    ["events", "/api/events"], ["cats", "/api/categories"], ["sections", "/api/sections"],
+    ["featured", "/api/articles?featured=1&limit=3"], ["latest", "/api/articles?limit=8"]
+  ];
+  const settled = await Promise.allSettled(jobs.map(([, url]) => api(url)));
+  const out = {};
+  settled.forEach((result, i) => { out[jobs[i][0]] = result.status === "fulfilled" ? result.value : []; if (result.status === "rejected") console.error(jobs[i][1], result.reason); });
+  out.settings = out.settings && !Array.isArray(out.settings) ? out.settings : {};
+  for (const key of ["nav","trending","events","cats","sections","featured","latest"]) if (!Array.isArray(out[key])) out[key] = [];
+  return out;
+}
+
+async function renderSections(sections) {
+  const valid = sections.filter(s => s.enabled !== false);
+  const html = await Promise.all(valid.map(async s => {
+    try {
+      const category = s.category_slug ? `&category=${encodeURIComponent(s.category_slug)}` : "";
+      const limit = Math.min(Math.max(Number(s.article_limit) || 2, 1), 12);
+      const articles = await api(`/api/articles?limit=${limit}${category}`);
+      const cols = Math.min(Math.max(Number(s.columns_count) || 2, 1), 4);
+      return `<section class="newsSection"><div class="sectionTitle"><h2>${esc(s.title)}</h2>${s.category_slug ? `<a href="/?category=${encodeURIComponent(s.category_slug)}">See all</a>` : ""}</div><div class="newsGrid cols${cols}">${articles.length ? articles.map(articleCard).join("") : `<p class="empty">No stories found.</p>`}</div></section>`;
+    } catch (e) {
+      console.error("section", e);
+      return `<section class="newsSection"><div class="sectionTitle"><h2>${esc(s.title)}</h2></div><p class="empty">Stories are temporarily unavailable.</p></section>`;
+    }
+  }));
+  $("sections").innerHTML = html.join("");
+}
+
+function setActiveNav(nav) {
+  const params = new URLSearchParams(location.search);
+  const category = params.get("category");
+  const search = params.get("search");
+  $("sideNav").innerHTML = nav.map((n, i) => {
+    const href = safeUrl(n.url, "/");
+    const active = category ? href.includes(`category=${encodeURIComponent(category)}`) : (!category && !search && href === "/");
+    const icon = ["⌂","♧","◉","◇","⌕","♧","◌"][i] || "◌";
+    return `<a class="${active ? "active" : ""}" href="${esc(href)}" onclick="document.body.classList.remove('menuOpen')">${icon}<span>${esc(n.label)}</span></a>`;
+  }).join("");
+}
 
 async function init() {
+  const data = await loadAll();
+  const { settings, nav, trending, events, cats, sections, featured, latest } = data;
+  $("searchInput").placeholder = settings.search_placeholder || "Search news, people, or topics...";
+  setActiveNav(nav);
 
-const [
-settings,
-nav,
-trending,
-events,
-cats,
-sections,
-featured,
-latest
-] = await Promise.all([
+  const hero = featured[0] || latest[0];
+  $("hero").innerHTML = hero ? heroCard(hero, settings.hero_button) : `<div class="heroCard"><div><span class="limeTag">YOUTH NEWS</span><h1>Stories for the next generation.</h1><p>Fresh stories from the campus community.</p></div></div>`;
 
-api("/api/settings"),
-api("/api/navigation"),
-api("/api/trending"),
-api("/api/events"),
-api("/api/categories"),
-api("/api/sections"),
-api("/api/articles?featured=1&limit=3"),
-api("/api/articles?limit=8")
+  const trendHtml = trending.map(t => `<a href="/?search=${encodeURIComponent(String(t.label || "").replace(/^#/, ""))}">${esc(t.label)}</a>`).join("");
+  $("trending").innerHTML = trendHtml || `<span class="muted">No trending topics yet.</span>`;
+  $("trendingBottom").innerHTML = trendHtml || `<span class="muted">No trending topics yet.</span>`;
 
-]);
+  $("categories").innerHTML = cats.map(c => `<li><a href="/?category=${encodeURIComponent(c.slug)}">${esc(c.name)}</a></li>`).join("") || `<li>No categories yet.</li>`;
+  $("events").innerHTML = events.slice(0, 6).map(eventCard).join("") || `<p class="muted">No upcoming events.</p>`;
+  $("quickGrid").innerHTML = latest.slice(0,4).map((a,i) => `<a href="/article.html?slug=${encodeURIComponent(a.slug)}" class="quickCard"><b>${String(i+1).padStart(2,"0")}</b><span>${esc(a.title)}</span></a>`).join("") || `<p class="empty">No published stories yet.</p>`;
 
-/* =========================
-URL PARAMETERS
-========================= */
+  const params = new URLSearchParams(location.search);
+  const categorySlug = params.get("category");
+  const search = params.get("search");
+  const all = params.get("all");
+  $("filterPills").innerHTML = `<a class="${!categorySlug && !search && !all ? "selected" : ""}" href="/">All stories</a>` + cats.map(c => `<a class="${categorySlug === c.slug ? "selected" : ""}" href="/?category=${encodeURIComponent(c.slug)}">${esc(c.name)}</a>`).join("");
 
-const params =
-new URLSearchParams(location.search);
+  if (categorySlug) {
+    const results = await api(`/api/articles?category=${encodeURIComponent(categorySlug)}&limit=100`);
+    const category = cats.find(c => c.slug === categorySlug);
+    $("sections").innerHTML = `<section class="newsSection"><div class="sectionTitle"><h2>${esc(category?.name || "News")}</h2></div><div class="newsGrid cols2">${results.map(articleCard).join("") || `<p class="empty">No stories found in this category.</p>`}</div></section>`;
+  } else if (search) {
+    const results = await api(`/api/articles?search=${encodeURIComponent(search)}&limit=100`);
+    $("hero").innerHTML = "";
+    $("sections").innerHTML = `<section class="newsSection"><div class="sectionTitle"><h2>Search results</h2><span class="muted">${esc(search)}</span></div><div class="newsGrid cols2">${results.map(articleCard).join("") || `<p class="empty">No stories found.</p>`}</div></section>`;
+  } else if (all) {
+    const results = await api("/api/articles?limit=100");
+    $("hero").innerHTML = "";
+    $("sections").innerHTML = `<section class="newsSection"><div class="sectionTitle"><h2>All stories</h2></div><div class="newsGrid cols2">${results.map(articleCard).join("") || `<p class="empty">No stories found.</p>`}</div></section>`;
+  } else {
+    await renderSections(sections);
+  }
 
-const categorySlug =
-params.get(“category”);
-
-const searchQuery =
-params.get(“search”);
-
-const allStories =
-params.get(“all”);
-
-/* =========================
-SEARCH
-========================= */
-
-$(“searchInput”).placeholder =
-settings.search_placeholder ||
-“Search news, people, or topics…”;
-
-/* =========================
-LEFT NAVIGATION
-========================= */
-
-$(“sideNav”).innerHTML = nav
-.map((n, i) => {
-
-  const isHome =
-    !categorySlug &&
-    !searchQuery &&
-    !allStories &&
-    (n.url === "/" || n.url === "");
-  const isCategory =
-    categorySlug &&
-    n.url &&
-    n.url.includes(
-      "category=" +
-      encodeURIComponent(categorySlug)
-    );
-  const active =
-    isHome || isCategory
-      ? "active"
-      : "";
-  return `
-    <a
-      class="${active}"
-      href="${esc(n.url)}"
-    >
-      ${
-        i === 0
-          ? "⌂"
-          : i === 1
-          ? "♧"
-          : i === 2
-          ? "◉"
-          : i === 3
-          ? "◇"
-          : i === 4
-          ? "⌕"
-          : i === 5
-          ? "♧"
-          : "◌"
-      }
-      <span>
-        ${esc(n.label)}
-      </span>
-    </a>
-  `;
-})
-.join("");
-
-/* =========================
-HERO
-========================= */
-
-const f =
-featured[0] ||
-latest[0];
-
-$(“hero”).innerHTML =
-f
-? heroCard(
-f,
-settings.hero_button
-)
-: “”;
-
-/* =========================
-TRENDING NOW
-========================= */
-
-$(“trending”).innerHTML =
-trending
-.map(
-t => <a href="/?search=${encodeURIComponent( String(t.label || "").replace(/^#/, "") )}" > ${esc(t.label)} </a>
-)
-.join(””);
-
-/* =========================
-TRENDING BOTTOM
-========================= */
-
-$(“trendingBottom”).innerHTML =
-`
-🔥 TRENDING TOPICS
-
-  <div class="pills">
-    ${
-      trending
-        .map(
-          t => `
-            <a
-              href="/?search=${encodeURIComponent(
-                String(t.label || "").replace(/^#/, "")
-              )}"
-            >
-              ${esc(t.label)}
-            </a>
-          `
-        )
-        .join("")
-    }
-  </div>
-`;
-
-/* =========================
-NEWS CATEGORIES
-========================= */
-
-$(“categories”).innerHTML =
-cats
-.map(
-c => `
-        <a
-          href="/?category=${encodeURIComponent(c.slug)}"
-        >
-          ${esc(c.name)}
-        </a>
-      </li>
-    `
-  )
-  .join("");
-
-/* =========================
-UPCOMING EVENTS
-========================= */
-
-$(“events”).innerHTML =
-events
-.map(e => {
-
-    let dateText = "";
-    if (e.event_date) {
-      const d =
-        new Date(
-          e.event_date + "T00:00:00"
-        );
-      dateText =
-        d.toLocaleDateString(
-          "en-US",
-          {
-            day: "numeric"
-          }
-        );
-    }
-    let monthText = "";
-    if (e.event_date) {
-      const d =
-        new Date(
-          e.event_date + "T00:00:00"
-        );
-      monthText =
-        d.toLocaleDateString(
-          "en-US",
-          {
-            month: "short"
-          }
-        ).toUpperCase();
-    }
-    return `
-      <div class="event">
-        <strong>
-          ${esc(dateText)}
-          <span>
-            ${esc(monthText)}
-          </span>
-        </strong>
-        <div>
-          ${esc(e.title)}
-          <small>
-            ${
-              e.event_time
-                ? esc(e.event_time)
-                : ""
-            }
-            ${
-              e.location
-                ? " · " + esc(e.location)
-                : ""
-            }
-            ${
-              e.description
-                ? " · " + esc(e.description)
-                : ""
-            }
-          </small>
-        </div>
-      </div>
-    `;
-  })
-  .join("");
-
-/* =========================
-QUICK NEWS
-========================= */
-
-$(“quickGrid”).innerHTML =
-latest
-.slice(0, 4)
-.map(
-(a, i) => `
-        <b>
-          ${String(i + 1).padStart(2, "0")}
-        </b>
-        <span>
-          ${esc(a.title)}
-        </span>
-      </a>
-    `
-  )
-  .join("");
-
-/* =========================
-FILTER PILLS
-========================= */
-
-$(“filterPills”).innerHTML =
-
-`
-  <a
-    class="${!categorySlug && !searchQuery && !allStories ? "selected" : ""}"
-    href="/"
-  >
-    All stories
-  </a>
-`
-+
-cats
-  .map(
-    c => `
-      <a
-        class="${
-          categorySlug === c.slug
-            ? "selected"
-            : ""
-        }"
-        href="/?category=${encodeURIComponent(c.slug)}"
-      >
-        ${esc(c.name)}
-      </a>
-    `
-  )
-  .join("");
-
-/* =========================
-HOMEPAGE SECTIONS
-========================= */
-
-$(“sections”).innerHTML =
-await Promise.all(
-
-  sections.map(
-    async s => {
-      const category =
-        s.category_slug
-          ? `&category=${encodeURIComponent(
-              s.category_slug
-            )}`
-          : "";
-      const a =
-        await api(
-          `/api/articles?limit=${
-            s.article_limit || 2
-          }${category}`
-        );
-      return `
-        <section class="newsSection">
-          <div class="sectionTitle">
-            <h2>
-              ${esc(s.title)}
-            </h2>
-            ${
-              s.category_slug
-                ? `
-                  <a
-                    href="/?category=${encodeURIComponent(
-                      s.category_slug
-                    )}"
-                  >
-                    See all
-                  </a>
-                `
-                : ""
-            }
-          </div>
-          <div
-            class="newsGrid cols${Math.min(
-              Math.max(
-                Number(
-                  s.columns_count
-                ) || 2,
-                1
-              ),
-              4
-            )}"
-          >
-            ${
-              a.map(articleCard).join("")
-              ||
-              "<p>No stories found.</p>"
-            }
-          </div>
-        </section>
-      `;
-    }
-  )
-)
-.then(x => x.join(""));
-
-/* =========================
-FOOTER
-========================= */
-
-$(“footer”).textContent =
-settings.footer_text ||
-“© Youth News · Stories for the next generation.”;
-
-/* =====================================================
-CATEGORY PAGE
-===================================================== */
-
-if (categorySlug) {
-
-const results =
-  await api(
-    "/api/articles?category=" +
-    encodeURIComponent(categorySlug)
-  );
-const category =
-  cats.find(
-    c => c.slug === categorySlug
-  );
-/*
- * IMPORTANT
- *
- * We only replace #sections.
- *
- * We DO NOT remove:
- * - Trending Now
- * - News Categories
- * - Upcoming Events
- * - Quick News
- * - Filter Pills
- * - Trending Topics
- */
-$("sections").innerHTML = `
-  <section class="newsSection">
-    <div class="sectionTitle">
-      <h2>
-        ${esc(
-          category?.name ||
-          "News"
-        )}
-      </h2>
-    </div>
-    <div class="newsGrid cols2">
-      ${
-        results.map(articleCard).join("")
-        ||
-        "<p>No stories found.</p>"
-      }
-    </div>
-  </section>
-`;
-
+  $("footer").textContent = settings.footer_text || "© Youth News · Stories for the next generation.";
 }
-
-/* =====================================================
-SEARCH PAGE
-===================================================== */
-
-if (searchQuery) {
-
-const results =
-  await api(
-    "/api/articles?search=" +
-    encodeURIComponent(searchQuery)
-  );
-$("hero").innerHTML = "";
-$("sections").innerHTML = `
-  <section class="newsSection">
-    <div class="sectionTitle">
-      <h2>
-        Search results
-      </h2>
-    </div>
-    <div class="newsGrid cols2">
-      ${
-        results.map(articleCard).join("")
-        ||
-        "<p>No stories found.</p>"
-      }
-    </div>
-  </section>
-`;
-
-}
-
-/* =====================================================
-ALL STORIES
-===================================================== */
-
-if (allStories) {
-
-const results =
-  await api(
-    "/api/articles?limit=100"
-  );
-$("hero").innerHTML = "";
-$("sections").innerHTML = `
-  <section class="newsSection">
-    <div class="sectionTitle">
-      <h2>
-        All stories
-      </h2>
-    </div>
-    <div class="newsGrid cols2">
-      ${
-        results.map(articleCard).join("")
-        ||
-        "<p>No stories found.</p>"
-      }
-    </div>
-  </section>
-`;
-
-}
-
-}
-
-/* =========================
-SEARCH
-========================= */
 
 function doSearch() {
-
-const q =
-$(“searchInput”).value.trim();
-
-if (!q) return;
-
-location.href =
-“/?search=” +
-encodeURIComponent(q);
-
+  const q = $("searchInput").value.trim();
+  if (q) location.href = `/?search=${encodeURIComponent(q)}`;
 }
 
-/* =========================
-START
-========================= */
-
-init().catch(e => {
-
-console.error(e);
-
-const hero =
-document.getElementById(“hero”);
-
-if (hero) {
-
-hero.innerHTML = `
-  <div class="heroCard">
-    <div>
-      <h1>
-        Unable to load YouthNews
-      </h1>
-      <p>
-        Check that the server is running
-        and the API is available.
-      </p>
-    </div>
-  </div>
-`;
-
-}
-
+init().catch(error => {
+  console.error(error);
+  $("hero").innerHTML = `<div class="heroCard"><div><h1>Unable to load YouthNews</h1><p>The website is online, but some content is temporarily unavailable. Please refresh and try again.</p></div></div>`;
 });

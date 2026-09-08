@@ -2,23 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#070b09">
 <title>YouthNews</title><link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <div class="app">
   <aside class="sidebar">
     <a class="logo" href="/"><strong>YOUTH<br><span>NEWS</span></strong><small>CAMPUS<br>DAILY</small></a>
-    <nav id="sideNav"></nav>
+    <nav id="sideNav" aria-label="Main navigation"></nav>
     <div class="sideBottom"><b>Stay in the loop</b><p>Fresh stories from the campus community every day.</p></div>
   </aside>
-
   <div class="mainArea">
     <header class="topbar">
-      <button class="mobileMenu" onclick="document.body.classList.toggle('menuOpen')">☰</button>
-      <div class="search"><span>⌕</span><input id="searchInput" placeholder="Search news, people, or topics..." onkeydown="if(event.key==='Enter')doSearch()"><button onclick="doSearch()">Search</button></div>
-      <div class="topIcons"><span>♧</span><span>□</span><span class="avatar"></span></div>
+      <button class="mobileMenu" type="button" aria-label="Open menu" onclick="document.body.classList.toggle('menuOpen')">☰</button>
+      <div class="search"><span>⌕</span><input id="searchInput" autocomplete="off" placeholder="Search news, people, or topics..." onkeydown="if(event.key==='Enter')doSearch()"><button type="button" onclick="doSearch()">Search</button></div>
+      <div class="topIcons" aria-hidden="true"><span>♧</span><span>□</span><span class="avatar"></span></div>
     </header>
-
     <main class="content">
       <section class="topGrid">
         <div id="hero"></div>
@@ -28,24 +27,14 @@
           <section class="railCard"><h2>Upcoming Events</h2><div id="events"></div></section>
         </aside>
       </section>
-
-      <section class="quick">
-        <div class="sectionTitle"><h2>⚡ QUICK NEWS</h2><a href="/?all=1">Latest updates</a></div>
-        <div id="quickGrid" class="quickGrid"></div>
-      </section>
-
+      <section class="quick"><div class="sectionTitle"><h2>⚡ QUICK NEWS</h2><a href="/?all=1">Latest updates</a></div><div id="quickGrid" class="quickGrid"></div></section>
       <div id="filterPills" class="filterPills"></div>
       <div id="sections"></div>
-
-      <section class="trendingBottom">
-        <h2>🔥 TRENDING TOPICS</h2><div id="trendingBottom" class="pills"></div>
-      </section>
+      <section class="trendingBottom"><h2>🔥 TRENDING TOPICS</h2><div id="trendingBottom" class="pills"></div></section>
     </main>
-
     <footer id="footer"></footer>
   </div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="/app.js"></script>
+<script src="/app.js" defer></script>
 </body>
 </html>
