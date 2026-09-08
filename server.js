@@ -246,14 +246,27 @@ async function seedSettings() {
 ========================================== */
 
 async function seedNavigation() {
-  const items = [
-    ["Home", "/", 1],
-    ["RMUTK News", "/?category=rmutk-news", 2],
-    ["General", "/?category=general", 3],
-    ["Training News", "/?category=training-news", 4],
-    ["Career", "/?category=career", 5],
-    ["Student Voice", "/?category=student-voice", 6]
-  ];
+  for (const [label, url, position] of items) {
+  await query(
+    `
+    INSERT INTO navigation(label,url,position)
+    VALUES($1,$2,$3)
+    ON CONFLICT DO NOTHING
+    `,
+    [label, url, position]
+  );
+
+  await query(
+    `
+    UPDATE navigation
+    SET url=$2,
+        position=$3,
+        enabled=TRUE
+    WHERE label=$1
+    `,
+    [label, url, position]
+  );
+}
 
   for (const [label, url, position] of items) {
     await query(
