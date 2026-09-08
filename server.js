@@ -150,7 +150,7 @@ async function setup() {
   const settings = [
     ["site_name", "YOUTH NEWS"], ["tagline", "Stories for the next generation."],
     ["breaking", "Latest updates from the campus community."], ["search_placeholder", "Search news, people, or topics..."],
-    ["hero_button", "Read More"], ["footer_text", "Â© Youth News Â· Stories for the next generation."],
+    ["hero_button", "Read More"], ["footer_text", "© Youth News · Stories for the next generation."],
     ["facebook", "#"], ["instagram", "#"], ["contact", "news@youthnews.local"]
   ];
   for (const [key, value] of settings) {
